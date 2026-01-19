@@ -54,12 +54,14 @@ public:
 signals:
   void fpsUpdated(float fps);
   void imageSizeChanged(int width, int height);
+  void wheelEventTriggered(QWheelEvent *event);
 
 protected:
   // 禁止 Qt 绘制，完全交给 SDK
   QPaintEngine *paintEngine() const override { return nullptr; }
   void resizeEvent(QResizeEvent *event) override;
   void paintEvent(QPaintEvent *event) override;
+  void wheelEvent(QWheelEvent *event) override;
 
 private slots:
   void emitFps();

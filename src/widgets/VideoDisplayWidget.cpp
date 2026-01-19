@@ -1,6 +1,7 @@
 #include "VideoDisplayWidget.h"
 #include <QDebug>
 #include <QPalette>
+#include <QWheelEvent>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -118,4 +119,8 @@ void VideoDisplayWidget::paintEvent(QPaintEvent *event) {
   if (!m_isStreaming) {
     clear();
   }
+}
+
+void VideoDisplayWidget::wheelEvent(QWheelEvent *event) {
+  emit wheelEventTriggered(event);
 }

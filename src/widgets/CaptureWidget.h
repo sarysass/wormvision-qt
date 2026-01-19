@@ -1,6 +1,8 @@
 #ifndef CAPTUREWIDGET_H
 #define CAPTUREWIDGET_H
 
+#include <QScrollArea>
+
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -43,6 +45,11 @@ private slots:
   void onDeviceSelectionChanged(int index);
   void onRecordTimerTimeout();
   void updateVideoLayout();
+  // Zoom slots
+  void onZoomInClicked();
+  void onZoomOutClicked();
+  void onFitWindowClicked();
+  void onVideoWheelEvent(QWheelEvent *event);
 
 protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
@@ -66,6 +73,14 @@ private:
   QPushButton *m_startRecordBtn = nullptr;
   QPushButton *m_stopRecordBtn = nullptr;
   QLineEdit *m_taskInfoEdit = nullptr;
+
+  // 缩放控制
+  QPushButton *m_zoomInBtn = nullptr;
+  QPushButton *m_zoomOutBtn = nullptr;
+  QPushButton *m_fitWindowBtn = nullptr;
+  QLabel *m_zoomLabel = nullptr;
+  QScrollArea *m_scrollArea = nullptr;
+  double m_currentZoom = -1.0;
 
   // 状态显示
   QLabel *m_fpsLabel = nullptr;

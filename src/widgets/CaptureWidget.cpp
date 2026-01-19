@@ -41,15 +41,20 @@ void CaptureWidget::setupUI() {
   QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
 
   // 视频显示区
-  // 视频显示区
+  // 使用 QScrollArea 包裹 VideoDisplayWidget 以支持缩放
   m_videoContainer = new QWidget(this);
-  m_videoContainer->setAutoFillBackground(true);
-  // m_videoContainer->setStyleSheet("background-color: #282828;"); //
-  // 移除强制背景，跟随主题
-  m_videoContainer->installEventFilter(this);
+  m_videoContainer->setLayout(new QVBoxLayout());
+  m_videoContainer->layout()->setContentsMargins(0, 0, 0, 0);
 
-  m_videoDisplay = new VideoDisplayWidget(m_videoContainer);
-  // m_videoDisplay->setMinimumSize(640, 480); //去掉最小限制，由容器控制
+  m_scrollArea = new QScrollArea(m_videoContainer);
+  m_scrollArea->setWidgetResizable(false); // 关键：我们自己控制大小
+  m_scrollArea->setAlignment(Qt::AlignCenter);
+  m_scrollArea->setStyleSheet("background-color: #282828; border: none;");
+
+  m_videoDisplay = new VideoDisplayWidget(m_scrollArea);
+  m_scrollArea->setWidget(m_videoDisplay);
+
+  m_videoContainer->layout()->addWidget(m_scrollArea);
 
   splitter->addWidget(m_videoContainer);
 
@@ -91,6 +96,25 @@ void CaptureWidget::setupUI() {
   m_stopRecordBtn->setEnabled(false);
   toolLayout->addWidget(m_startRecordBtn);
   toolLayout->addWidget(m_stopRecordBtn);
+
+  toolLayout->addWidget(m_stopRecordBtn);
+
+  // 缩放控制
+  toolLayout->addWidget(new QLabel("|", toolbar)); // 分隔符
+
+  m_zoomOutBtn = new QPushButton("-", toolbar);
+  m_zoomOutBtn->setFixedWidth(30);
+  m_zoomLabel = new QLabel("100%", toolbar);
+  m_zoomLabel->setFixedWidth(40);
+  m_zoomLabel->setAlignment(Qt::AlignCenter);
+  m_zoomInBtn = new QPushButton("+", toolbar);
+  m_zoomInBtn->setFixedWidth(30);
+  m_fitWindowBtn = new QPushButton("适应", toolbar);
+
+  toolLayout->addWidget(m_zoomOutBtn);
+  toolLayout->addWidget(m_zoomLabel);
+  toolLayout->addWidget(m_zoomInBtn);
+  toolLayout->addWidget(m_fitWindowBtn);
 
   toolLayout->addStretch();
 
@@ -232,6 +256,52 @@ void CaptureWidget::setupConnections() {
   m_recordTimer = new QTimer(this);
   connect(m_recordTimer, &QTimer::timeout, this,
           &CaptureWidget::onRecordTimerTimeout);
+  connect(m_recordTimer, &QTimer::timeout, this,
+          &CaptureWidget::onRecordTimerTimeout);
+
+  // ===== 缩放信号 =====
+  connect(m_zoomInBtn, &QPushButton::clicked, this,
+          &CaptureWidget::onZoomInClicked);
+  connect(m_zoomOutBtn, &QPushButton::clicked, this,
+          &CaptureWidget::onZoomOutClicked);
+  connect(m_fitWindowBtn, &QPushButton::clicked, this,
+          &CaptureWidget::onFitWindowClicked);
+  connect(m_videoDisplay, &VideoDisplayWidget::wheelEventTriggered, this,
+          &CaptureWidget::onVideoWheelEvent);
+}
+
+// ============================================================================
+// 缩放逻辑
+// ============================================================================
+
+void CaptureWidget::onZoomInClicked() {
+  double newZoom = m_currentZoom + 0.01; // 1% 步进
+  if (newZoom > 5.0)
+    newZoom = 5.0;
+
+  m_currentZoom = newZoom;
+  updateVideoLayout();
+}
+
+void CaptureWidget::onZoomOutClicked() {
+  double newZoom = m_currentZoom - 0.01; // 1% 步进
+  if (newZoom < 0.01)                    // 最小 1%
+    newZoom = 0.01;
+  m_currentZoom = newZoom;
+  updateVideoLayout();
+}
+
+void CaptureWidget::onFitWindowClicked() {
+  m_currentZoom = -1.0; // 特殊值表示适应窗口
+  updateVideoLayout();
+}
+
+void CaptureWidget::onVideoWheelEvent(QWheelEvent *event) {
+  if (event->angleDelta().y() > 0) {
+    onZoomInClicked();
+  } else {
+    onZoomOutClicked();
+  }
 }
 
 // ============================================================================
@@ -319,6 +389,9 @@ void CaptureWidget::onStartPreviewClicked() {
 
   m_videoDisplay->setStreaming(true);
   m_statusLabel->setText("预览中...");
+
+  // 自动适应窗口大小
+  onFitWindowClicked();
 }
 
 void CaptureWidget::onStopPreviewClicked() {
@@ -411,35 +484,60 @@ void CaptureWidget::onFpsUpdated(float fps) {
 }
 
 void CaptureWidget::updateVideoLayout() {
-  if (!m_videoContainer || !m_videoDisplay)
+  if (!m_scrollArea || !m_videoDisplay)
     return;
 
-  QSize containerSize = m_videoContainer->size();
-  QSize imageSize = m_videoDisplay->sizeHint();
+  QSize imageSize = m_videoDisplay->sizeHint(); // 这是原始图像大小
 
   if (imageSize.isEmpty()) {
-    m_videoDisplay->setGeometry(0, 0, containerSize.width(),
-                                containerSize.height());
+    // 如果没有图像大小，默认不做处理或给个默认值
     return;
   }
 
-  QSize scaledSize = imageSize.scaled(containerSize, Qt::KeepAspectRatio);
+  // 计算目标大小
+  QSize targetSize;
 
-  int x = (containerSize.width() - scaledSize.width()) / 2;
-  int y = (containerSize.height() - scaledSize.height()) / 2;
+  if (m_currentZoom < 0) {
+    // 适应窗口模式 (Fit Window) -> 计算一次性最佳比例
+    // 获取 ScrollArea 的视口大小
+    QSize viewportSize = m_scrollArea->viewport()->size();
 
-  m_videoDisplay->setGeometry(x, y, scaledSize.width(), scaledSize.height());
+    // 计算宽高的压缩比例
+    double scaleW = (double)viewportSize.width() / imageSize.width();
+    double scaleH = (double)viewportSize.height() / imageSize.height();
+
+    // 取较小值以确保完全放入
+    m_currentZoom = std::min(scaleW, scaleH);
+  }
+
+  // 应用当前缩放比例 (无论是刚计算的还是手动的)
+  targetSize = imageSize * m_currentZoom;
+  m_zoomLabel->setText(
+      QString("%1%").arg(static_cast<int>(m_currentZoom * 100)));
+
+  // 设置 VideoDisplayWidget 的固定大小，触发 ScrollArea 的滚动条
+  m_videoDisplay->setFixedSize(targetSize);
 }
 
 bool CaptureWidget::eventFilter(QObject *watched, QEvent *event) {
-  if (watched == m_videoContainer && event->type() == QEvent::Resize) {
-    updateVideoLayout();
-  }
+  // 监听 ScrollArea 大小变化以在自适应模式下更新布局
+  /* if (watched == m_scrollArea && event->type() == QEvent::Resize) {
+      if (m_currentZoom < 0) {
+            updateVideoLayout();
+      }
+  } */
   return QWidget::eventFilter(watched, event);
 }
 
 void CaptureWidget::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
+  // 在新逻辑下，Resize 不再自动触发 updateVideoLayout (不再自适应)，
+  // 除非我们想在还没加载图片时保持某种状态。
+  // 但为了响应第一次显示时的布局，我们可以保留对 fit 模式 (-1) 的检查，
+  // 否则如果已经有比例了，就保持该比例 (出现滚动条或黑边)。
+  if (m_currentZoom < 0) {
+    updateVideoLayout();
+  }
 }
 
 void CaptureWidget::showEvent(QShowEvent *event) {
