@@ -23,7 +23,7 @@ void CloudService::fetchWorkspaces() {
 
 void CloudService::uploadFile(const QString &filePath,
                               const QString &workspaceId) {
-  qDebug() << "Mock Uploading" << filePath << "to" << workspaceId;
+  qDebug() << "模拟上传中" << filePath << "至" << workspaceId;
 
   // Validate file
   if (!QFileInfo::exists(filePath)) {

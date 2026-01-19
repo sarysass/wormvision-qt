@@ -3,11 +3,11 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QPixmap>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+
 
 class VideoLibraryWidget : public QWidget {
   Q_OBJECT
@@ -39,7 +39,6 @@ private:
   void scanVideoFolder(); // Helper to scan folder and update DB
   QString formatDuration(double seconds);
   QString formatFileSize(qint64 bytes);
-  QPixmap generateThumbnail(const QString &filepath);
   double getVideoDuration(const QString &filepath);
 
   QTableWidget *m_tableWidget;

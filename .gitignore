@@ -52,3 +52,9 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
+
+# SDK Samples and Docs
+Development/Samples/
+Development/Documentations/
+
+Development/

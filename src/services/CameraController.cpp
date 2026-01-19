@@ -1,336 +1,504 @@
 #include "CameraController.h"
+#include <MvCameraControl.h>
 #include <QDebug>
-#include <QImage>
+#include <chrono>
 
-#include "MvCameraControl.h"
+// ============================================================================
+// 构造与析构
+// ============================================================================
 
-CameraController::CameraController(QObject *parent)
-    : QObject(parent), m_cameraHandle(nullptr) {
-  initSDK();
+CameraController::CameraController(QObject *parent) : QObject(parent) {}
+
+CameraController::~CameraController() { close(); }
+
+// ============================================================================
+// 设备管理
+// ============================================================================
+
+QList<CameraController::DeviceInfo> CameraController::enumerateDevices() {
+  QList<DeviceInfo> devices;
+  MV_CC_DEVICE_INFO_LIST deviceList;
+  memset(&deviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
+
+  int ret = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &deviceList);
+  if (ret != MV_OK) {
+    qWarning() << "设备枚举失败:" << Qt::hex << ret;
+    return devices;
+  }
+
+  for (unsigned int i = 0; i < deviceList.nDeviceNum; i++) {
+    MV_CC_DEVICE_INFO *pDev = deviceList.pDeviceInfo[i];
+    if (!pDev)
+      continue;
+
+    DeviceInfo info;
+    info.index = static_cast<int>(i);
+    info.deviceType = pDev->nTLayerType;
+
+    if (pDev->nTLayerType == MV_GIGE_DEVICE) {
+      info.name = QString::fromLatin1(reinterpret_cast<const char *>(
+          pDev->SpecialInfo.stGigEInfo.chModelName));
+      info.serialNumber = QString::fromLatin1(reinterpret_cast<const char *>(
+          pDev->SpecialInfo.stGigEInfo.chSerialNumber));
+    } else if (pDev->nTLayerType == MV_USB_DEVICE) {
+      info.name = QString::fromLatin1(reinterpret_cast<const char *>(
+          pDev->SpecialInfo.stUsb3VInfo.chModelName));
+      info.serialNumber = QString::fromLatin1(reinterpret_cast<const char *>(
+          pDev->SpecialInfo.stUsb3VInfo.chSerialNumber));
+    }
+    devices.append(info);
+  }
+
+  qDebug() << "已枚举" << devices.size() << "个相机";
+  return devices;
 }
 
-CameraController::~CameraController() {
-  if (m_isGrabbing) {
-    stopGrabbing();
-  }
-  if (m_isOpen) {
-    close();
-  }
-  uninitSDK();
-
-  if (m_pDataBuf) {
-    delete[] m_pDataBuf;
-    m_pDataBuf = nullptr;
-  }
-}
-
-void CameraController::initSDK() {
-  int nRet = MV_CC_Initialize();
-  if (MV_OK != nRet) {
-    qDebug() << "SDK Initialize fail! nRet:" << nRet;
-    return;
-  }
-  qDebug() << "相机 SDK 初始化成功";
-}
-
-void CameraController::uninitSDK() {
-  MV_CC_Finalize();
-  qDebug() << "相机 SDK 反初始化";
-}
-
-bool CameraController::open() {
-  if (m_isOpen) {
+bool CameraController::open(int deviceIndex) {
+  if (m_isOpen)
     return true;
-  }
-
-  int nRet = MV_OK;
-  MV_CC_DEVICE_INFO_LIST stDeviceList;
-  memset(&stDeviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
 
   // 枚举设备
-  nRet = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &stDeviceList);
-  if (MV_OK != nRet) {
-    emit error(QString("枚举设备失败: %1").arg(nRet));
+  MV_CC_DEVICE_INFO_LIST deviceList;
+  memset(&deviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
+  int ret = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &deviceList);
+  if (ret != MV_OK || deviceIndex >= static_cast<int>(deviceList.nDeviceNum)) {
+    emit error("设备枚举失败或设备索引无效");
     return false;
   }
 
-  if (stDeviceList.nDeviceNum == 0) {
-    emit error("未找到相机设备");
-    return false;
-  }
-
-  // 选择第一个设备
-  MV_CC_DEVICE_INFO *pDeviceInfo = stDeviceList.pDeviceInfo[0];
-  if (NULL == pDeviceInfo) {
-    emit error("设备信息为空");
-    return false;
-  }
+  MV_CC_DEVICE_INFO *pDevInfo = deviceList.pDeviceInfo[deviceIndex];
 
   // 创建句柄
-  nRet = MV_CC_CreateHandle(&m_cameraHandle, pDeviceInfo);
-  if (MV_OK != nRet) {
-    emit error(QString("创建句柄失败: %1").arg(nRet));
+  ret = MV_CC_CreateHandle(&m_cameraHandle, pDevInfo);
+  if (ret != MV_OK) {
+    emit error(QString("创建句柄失败: 0x%1").arg(ret, 8, 16, QChar('0')));
     return false;
   }
 
   // 打开设备
-  nRet = MV_CC_OpenDevice(m_cameraHandle);
-  if (MV_OK != nRet) {
+  ret = MV_CC_OpenDevice(m_cameraHandle);
+  if (ret != MV_OK) {
     MV_CC_DestroyHandle(m_cameraHandle);
     m_cameraHandle = nullptr;
-    emit error(QString("打开相机失败: %1").arg(nRet));
+    emit error(QString("打开设备失败: 0x%1").arg(ret, 8, 16, QChar('0')));
     return false;
   }
 
-  // 如果是 GigE 相机，设置最佳包大小
-  if (pDeviceInfo->nTLayerType == MV_GIGE_DEVICE) {
-    int nPacketSize = MV_CC_GetOptimalPacketSize(m_cameraHandle);
-    if (nPacketSize > 0) {
-      nRet =
-          MV_CC_SetIntValue(m_cameraHandle, "GevSCPSPacketSize", nPacketSize);
-      if (nRet != MV_OK) {
-        qWarning() << "Warning: Set Packet Size fail nRet:" << nRet;
-      }
-    } else {
-      qWarning() << "Warning: Get Packet Size fail nRet:" << nPacketSize;
+  // GigE 优化包大小
+  if (pDevInfo->nTLayerType == MV_GIGE_DEVICE) {
+    int packetSize = MV_CC_GetOptimalPacketSize(m_cameraHandle);
+    if (packetSize > 0) {
+      MV_CC_SetIntValue(m_cameraHandle, "GevSCPSPacketSize", packetSize);
+      qDebug() << "GigE 包大小设置为:" << packetSize;
     }
   }
 
-  // 预分配缓冲区 (假设最大 20MP RGB)
-  if (m_pDataBuf == nullptr) {
-    m_nDataBufSize = 4096 * 3000 * 3 + 2048; // 稍微多一点
-    m_pDataBuf = new unsigned char[m_nDataBufSize];
+  m_isOpen = true;
+
+  // 确保触发模式关闭 (连续采集模式)
+  int nRet =
+      MV_CC_SetEnumValue(m_cameraHandle, "TriggerMode", MV_TRIGGER_MODE_OFF);
+  if (MV_OK != nRet) {
+    qWarning() << "设置触发模式关闭失败:" << Qt::hex << nRet;
   }
 
-  m_isOpen = true;
+  // ========== MVS 方案：从 SDK 获取参数范围 ==========
+  MVCC_FLOATVALUE floatVal;
+
+  // 曝光范围
+  if (MV_OK == MV_CC_GetFloatValue(m_cameraHandle, "ExposureTime", &floatVal)) {
+    emit exposureRangeReady(floatVal.fMin, floatVal.fMax, floatVal.fCurValue);
+    qDebug() << "曝光范围:" << floatVal.fMin << "-" << floatVal.fMax
+             << ", 当前:" << floatVal.fCurValue;
+  }
+
+  // 增益范围
+  if (MV_OK == MV_CC_GetFloatValue(m_cameraHandle, "Gain", &floatVal)) {
+    emit gainRangeReady(floatVal.fMin, floatVal.fMax, floatVal.fCurValue);
+    qDebug() << "增益范围:" << floatVal.fMin << "-" << floatVal.fMax
+             << ", 当前:" << floatVal.fCurValue;
+  }
+
+  // 帧率范围
+  if (MV_OK ==
+      MV_CC_GetFloatValue(m_cameraHandle, "AcquisitionFrameRate", &floatVal)) {
+    // 限制 UI 显示的最大帧率，避免出现 10000+ 的无效范围
+    // 如果硬件返回的最大值超过 120，且当前值小于 120，则将 UI 上限限制为
+    // 120
+    float uiMax = floatVal.fMax;
+    if (uiMax > 120.0f && floatVal.fCurValue <= 120.0f) {
+      uiMax = 120.0f;
+    }
+    emit frameRateRangeReady(floatVal.fMin, uiMax, floatVal.fCurValue);
+    qDebug() << "帧率范围:" << floatVal.fMin << "-" << floatVal.fMax
+             << ", 当前:" << floatVal.fCurValue;
+  }
+
+  // 分辨率 (宽/高/最大值)
+  MVCC_INTVALUE intVal;
+  int w = 0, h = 0;
+  int wMax = 0, hMax = 0;
+  int wInc = 8, hInc = 8;
+
+  if (MV_OK == MV_CC_GetIntValue(m_cameraHandle, "Width", &intVal)) {
+    w = intVal.nCurValue;
+    wMax = intVal.nMax;
+    wInc = intVal.nInc > 0 ? intVal.nInc : 8;
+    m_widthInc = wInc; // 保存步长
+  }
+  if (MV_OK == MV_CC_GetIntValue(m_cameraHandle, "Height", &intVal)) {
+    h = intVal.nCurValue;
+    hMax = intVal.nMax;
+    hInc = intVal.nInc > 0 ? intVal.nInc : 8;
+    m_heightInc = hInc; // 保存步长
+  }
+
+  if (w > 0 && h > 0) {
+    emit resolutionReady(w, h, wInc, hInc);
+    qDebug() << "分辨率:" << w << "x" << h << " 步长:" << wInc << "x" << hInc;
+  }
+  if (wMax > 0 && hMax > 0) {
+    emit resolutionMaxReady(wMax, hMax);
+    qDebug() << "最大分辨率:" << wMax << "x" << hMax;
+  }
+
+  // 偏移量 (OffsetX/OffsetY)
+  int offX = 0, offY = 0;
+  if (MV_OK == MV_CC_GetIntValue(m_cameraHandle, "OffsetX", &intVal))
+    offX = intVal.nCurValue;
+  if (MV_OK == MV_CC_GetIntValue(m_cameraHandle, "OffsetY", &intVal))
+    offY = intVal.nCurValue;
+  emit offsetReady(offX, offY);
+
+  // 结果帧率 (ResultingFrameRate)
+  if (MV_OK ==
+      MV_CC_GetFloatValue(m_cameraHandle, "ResultingFrameRate", &floatVal)) {
+    emit resultingFrameRateReady(floatVal.fCurValue);
+    qDebug() << "结果帧率:" << floatVal.fCurValue;
+  }
+
   emit cameraOpened();
-  qDebug() << "相机已打开";
-
-  // 恢复之前的参数设置
-  setExposure(m_exposure);
-  setGain(m_gain);
-  setFrameRate(m_frameRate);
-
-  // 从 SDK 获取参数范围并发射信号
-  auto expRange = getExposureRange();
-  emit exposureRangeReady(expRange.min, expRange.max, expRange.current);
-
-  auto gainRange = getGainRange();
-  emit gainRangeReady(gainRange.min, gainRange.max, gainRange.current);
-
-  auto fpsRange = getFrameRateRange();
-  emit frameRateRangeReady(fpsRange.min, fpsRange.max, fpsRange.current);
-
+  qDebug() << "相机已成功打开";
   return true;
 }
 
 void CameraController::close() {
-  if (!m_isOpen) {
+  if (!m_isOpen)
     return;
-  }
 
-  if (m_isGrabbing) {
-    stopGrabbing();
-  }
+  stopGrabbing();
 
-  if (m_cameraHandle) {
-    MV_CC_CloseDevice(m_cameraHandle);
-    MV_CC_DestroyHandle(m_cameraHandle);
-    m_cameraHandle = nullptr;
-  }
+  if (m_isRecording)
+    stopRecording();
 
+  MV_CC_CloseDevice(m_cameraHandle);
+  MV_CC_DestroyHandle(m_cameraHandle);
+  m_cameraHandle = nullptr;
   m_isOpen = false;
+
   emit cameraClosed();
   qDebug() << "相机已关闭";
 }
 
+// ============================================================================
+// 图像采集
+// ============================================================================
+
+void CameraController::setDisplayHandle(void *hwnd) { m_displayHandle = hwnd; }
+
 bool CameraController::startGrabbing() {
-  if (!m_isOpen) {
-    emit error("相机未打开");
+  if (!m_isOpen || m_isGrabbing)
+    return false;
+
+  int ret = MV_CC_StartGrabbing(m_cameraHandle);
+  if (ret != MV_OK) {
+    emit error(QString("开始采集失败: 0x%1").arg(ret, 8, 16, QChar('0')));
     return false;
   }
 
-  if (m_isGrabbing) {
-    return true;
-  }
-
-  int nRet = MV_CC_StartGrabbing(m_cameraHandle);
-  if (MV_OK != nRet) {
-    emit error(QString("启动采集失败: %1").arg(nRet));
-    return false;
-  }
-
-  m_stopRequested = false;
   m_isGrabbing = true;
-
-  // 启动采集线程
+  m_stopGrabbing = false;
+  m_frameCount = 0;
   m_grabThread = std::thread(&CameraController::grabLoop, this);
 
-  qDebug() << "采集已启动";
+  qDebug() << "开始采集";
   return true;
 }
 
 void CameraController::stopGrabbing() {
-  if (!m_isGrabbing) {
+  if (!m_isGrabbing)
     return;
-  }
 
-  m_stopRequested = true;
-
-  // 停止采集 API
-  MV_CC_StopGrabbing(m_cameraHandle);
-
-  // 等待线程结束
-  if (m_grabThread.joinable()) {
+  m_stopGrabbing = true;
+  if (m_grabThread.joinable())
     m_grabThread.join();
-  }
 
+  MV_CC_StopGrabbing(m_cameraHandle);
   m_isGrabbing = false;
-  qDebug() << "采集已停止";
+
+  qDebug() << "停止采集，总帧数:" << m_frameCount.load();
 }
 
 void CameraController::grabLoop() {
-  MV_FRAME_OUT stImageInfo = {0};
-  memset(&stImageInfo, 0, sizeof(MV_FRAME_OUT));
+  MV_FRAME_OUT frameOut;
+  memset(&frameOut, 0, sizeof(MV_FRAME_OUT));
 
-  int nRet = MV_OK;
+  while (!m_stopGrabbing) {
+    int ret = MV_CC_GetImageBuffer(m_cameraHandle, &frameOut, 1000);
+    if (ret == MV_OK) {
+      // 更新分辨率和像素类型
+      int w = frameOut.stFrameInfo.nWidth;
+      int h = frameOut.stFrameInfo.nHeight;
+      int extendW = frameOut.stFrameInfo.nExtendWidth;
+      int extendH = frameOut.stFrameInfo.nExtendHeight;
+      int pixelType = frameOut.stFrameInfo.enPixelType;
 
-  while (!m_stopRequested) {
-    nRet = MV_CC_GetImageBuffer(m_cameraHandle, &stImageInfo, 1000);
-    if (nRet == MV_OK) {
-      // 获取图像成功
-      // 我们直接将数据转换到 m_pDataBuf 中
+      if (w != m_width || h != m_height) {
+        m_width = w;
+        m_height = h;
+        emit resolutionChanged(w, h);
+      }
+      m_extendWidth = extendW;
+      m_extendHeight = extendH;
+      m_pixelType = pixelType;
 
-      MV_CC_PIXEL_CONVERT_PARAM stConvertParam = {0};
-      stConvertParam.nWidth = stImageInfo.stFrameInfo.nWidth;
-      stConvertParam.nHeight = stImageInfo.stFrameInfo.nHeight;
-      stConvertParam.pSrcData = stImageInfo.pBufAddr;
-      stConvertParam.nSrcDataLen = stImageInfo.stFrameInfo.nFrameLen;
-      stConvertParam.enSrcPixelType = stImageInfo.stFrameInfo.enPixelType;
-      // 使用 RGB8 Packed 格式 (3字节/像素)
-      stConvertParam.enDstPixelType = PixelType_Gvsp_RGB8_Packed;
-      stConvertParam.pDstBuffer = m_pDataBuf;
-      stConvertParam.nDstBufferSize = m_nDataBufSize;
+      // SDK 直接渲染到窗口
+      if (m_displayHandle) {
+        MV_CC_IMAGE stImage = {0};
+        stImage.enPixelType = frameOut.stFrameInfo.enPixelType;
+        stImage.nWidth = extendW;
+        stImage.nHeight = extendH;
+        stImage.nImageLen = frameOut.stFrameInfo.nFrameLenEx;
+        stImage.pImageBuf = frameOut.pBufAddr;
 
-      int nRetConvert = MV_CC_ConvertPixelType(m_cameraHandle, &stConvertParam);
-      if (MV_OK == nRetConvert) {
-        // 构造 QImage，使用显式步长 (stride) = width * 3
-        // 注意：QImage 默认构造不拷贝数据，只是包装指针
-        QImage wrapperImage(m_pDataBuf, stConvertParam.nWidth,
-                            stConvertParam.nHeight, stConvertParam.nWidth * 3,
-                            QImage::Format_RGB888);
-
-        // 执行深拷贝 (Deep Copy)，因为 m_pDataBuf 在下一次循环会被覆盖
-        // 这里的 copy() 会处理内存对齐，生成的 QImage 是 4 字节对齐的，适合 Qt
-        // 渲染
-        QImage finalImage = wrapperImage.copy();
-
-        m_frameCount++;
-        emit frameReady(finalImage, m_frameCount);
-      } else {
-        qWarning() << "Convert Pixel fail:" << nRetConvert;
+        MV_CC_DisplayOneFrameEx2(m_cameraHandle, m_displayHandle, &stImage, 0);
       }
 
-      MV_CC_FreeImageBuffer(m_cameraHandle, &stImageInfo);
+      // 录制时输入帧
+      if (m_isRecording) {
+        MV_CC_INPUT_FRAME_INFO inputInfo;
+        memset(&inputInfo, 0, sizeof(MV_CC_INPUT_FRAME_INFO));
+        inputInfo.pData = frameOut.pBufAddr;
+        inputInfo.nDataLen =
+            frameOut.stFrameInfo.nFrameLenEx; // 使用 nFrameLenEx
+        int nRet = MV_CC_InputOneFrame(m_cameraHandle, &inputInfo);
+        if (nRet != MV_OK) {
+          qWarning() << "录制输入帧失败:" << Qt::hex << nRet;
+        }
+      }
+
+      // 缓存帧用于抓拍
+      {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        m_frameLen = frameOut.stFrameInfo.nFrameLenEx; // 使用 Ex
+        m_frameBuffer.assign(frameOut.pBufAddr, frameOut.pBufAddr + m_frameLen);
+      }
+
+      m_frameCount++;
+      emit frameRendered(m_frameCount);
+
+      MV_CC_FreeImageBuffer(m_cameraHandle, &frameOut);
     } else {
-      if (m_stopRequested)
-        break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
   }
 }
 
+// ============================================================================
+// 参数控制
+// ============================================================================
+
 void CameraController::setExposure(float microseconds) {
-  m_exposure = microseconds;
-  if (m_isOpen && m_cameraHandle) {
-    int nRet =
-        MV_CC_SetFloatValue(m_cameraHandle, "ExposureTime", microseconds);
-    if (nRet != MV_OK) {
-      qWarning() << "Set ExposureTime fail:" << nRet;
-    }
+  if (!m_isOpen)
+    return;
+  int ret = MV_CC_SetFloatValue(m_cameraHandle, "ExposureTime", microseconds);
+  if (ret != MV_OK) {
+    qWarning() << "设置曝光失败:" << Qt::hex << ret;
   }
-  emit parameterChanged("exposure", microseconds);
 }
 
 void CameraController::setGain(float db) {
-  m_gain = db;
-  if (m_isOpen && m_cameraHandle) {
-    int nRet = MV_CC_SetFloatValue(m_cameraHandle, "Gain", db);
-    if (nRet != MV_OK) {
-      qWarning() << "Set Gain fail:" << nRet;
-    }
+  if (!m_isOpen)
+    return;
+  int ret = MV_CC_SetFloatValue(m_cameraHandle, "Gain", db);
+  if (ret != MV_OK) {
+    qWarning() << "设置增益失败:" << Qt::hex << ret;
   }
-  emit parameterChanged("gain", db);
 }
 
 void CameraController::setFrameRate(float fps) {
-  m_frameRate = fps;
-  if (m_isOpen && m_cameraHandle) {
-    // 需要先 enable AcquisitionFrameRateEnable
-    MV_CC_SetBoolValue(m_cameraHandle, "AcquisitionFrameRateEnable", true);
-    int nRet = MV_CC_SetFloatValue(m_cameraHandle, "AcquisitionFrameRate", fps);
-    if (nRet != MV_OK) {
-      qWarning() << "Set AcquisitionFrameRate fail:" << nRet;
-    }
+  if (!m_isOpen)
+    return;
+  // MVS 方案：只有在用户启用帧率限制时才设置
+  int ret = MV_CC_SetFloatValue(m_cameraHandle, "AcquisitionFrameRate", fps);
+  if (ret != MV_OK) {
+    qWarning() << "设置帧率失败:" << Qt::hex << ret;
   }
-  emit parameterChanged("frameRate", fps);
 }
 
-void CameraController::setBinning(int factor) {
-  m_binning = factor;
-  // 一般相机不支持直接设置 "Binning"，通常是 "BinningHorizontal" 和
-  // "BinningVertical" 并且某些相机只支持特定整数
-  if (m_isOpen && m_cameraHandle) {
-    // 尝试设置，不一定成功，取决于相机能力
-    int nRet = MV_CC_SetIntValue(m_cameraHandle, "BinningHorizontal", factor);
-    if (nRet == MV_OK) {
-      MV_CC_SetIntValue(m_cameraHandle, "BinningVertical", factor);
-    } else {
-      qWarning() << "Set Binning fail:" << nRet;
-    }
+void CameraController::setFrameRateEnable(bool enable) {
+  if (!m_isOpen)
+    return;
+  int ret =
+      MV_CC_SetBoolValue(m_cameraHandle, "AcquisitionFrameRateEnable", enable);
+  if (ret != MV_OK) {
+    qWarning() << "设置帧率启用失败:" << Qt::hex << ret;
   }
-  emit parameterChanged("binning", static_cast<float>(factor));
 }
 
-CameraController::ParameterRange CameraController::getExposureRange() const {
-  ParameterRange range = {100.0f, 1000000.0f, m_exposure}; // 默认值
-  if (m_isOpen && m_cameraHandle) {
-    MVCC_FLOATVALUE floatVal;
-    int nRet = MV_CC_GetFloatValue(m_cameraHandle, "ExposureTime", &floatVal);
-    if (nRet == MV_OK) {
-      range.min = floatVal.fMin;
-      range.max = floatVal.fMax;
-      range.current = floatVal.fCurValue;
-    }
-  }
-  return range;
+void CameraController::setOffsetX(int offset) {
+  if (!m_isOpen)
+    return;
+  int ret = MV_CC_SetIntValue(m_cameraHandle, "OffsetX", offset);
+  if (ret != MV_OK)
+    qWarning() << "设置OffsetX失败:" << Qt::hex << ret;
 }
 
-CameraController::ParameterRange CameraController::getGainRange() const {
-  ParameterRange range = {0.0f, 20.0f, m_gain}; // 默认值
-  if (m_isOpen && m_cameraHandle) {
-    MVCC_FLOATVALUE floatVal;
-    int nRet = MV_CC_GetFloatValue(m_cameraHandle, "Gain", &floatVal);
-    if (nRet == MV_OK) {
-      range.min = floatVal.fMin;
-      range.max = floatVal.fMax;
-      range.current = floatVal.fCurValue;
-    }
-  }
-  return range;
+void CameraController::setOffsetY(int offset) {
+  if (!m_isOpen)
+    return;
+  int ret = MV_CC_SetIntValue(m_cameraHandle, "OffsetY", offset);
+  if (ret != MV_OK)
+    qWarning() << "设置OffsetY失败:" << Qt::hex << ret;
 }
 
-CameraController::ParameterRange CameraController::getFrameRateRange() const {
-  ParameterRange range = {1.0f, 60.0f, m_frameRate}; // 默认值
-  if (m_isOpen && m_cameraHandle) {
-    MVCC_FLOATVALUE floatVal;
-    int nRet =
-        MV_CC_GetFloatValue(m_cameraHandle, "AcquisitionFrameRate", &floatVal);
-    if (nRet == MV_OK) {
-      range.min = floatVal.fMin;
-      range.max = floatVal.fMax;
-      range.current = floatVal.fCurValue;
-    }
+void CameraController::setWidth(int width) {
+  if (!m_isOpen)
+    return;
+
+  // 自动对齐到步长
+  if (m_widthInc > 1) {
+    width = (width / m_widthInc) * m_widthInc;
+    if (width < m_widthInc)
+      width = m_widthInc;
   }
-  return range;
+
+  int ret = MV_CC_SetIntValue(m_cameraHandle, "Width", width);
+  if (ret != MV_OK)
+    qWarning() << "设置Width失败:" << Qt::hex << ret;
+}
+
+void CameraController::setHeight(int height) {
+  if (!m_isOpen)
+    return;
+
+  // 自动对齐到步长
+  if (m_heightInc > 1) {
+    height = (height / m_heightInc) * m_heightInc;
+    if (height < m_heightInc)
+      height = m_heightInc;
+  }
+
+  int ret = MV_CC_SetIntValue(m_cameraHandle, "Height", height);
+  if (ret != MV_OK)
+    qWarning() << "设置Height失败:" << Qt::hex << ret;
+}
+
+// ============================================================================
+// 录制功能
+// ============================================================================
+
+bool CameraController::startRecording(const QString &filePath, float fps,
+                                      int bitRateKbps) {
+  if (!m_isOpen || m_isRecording)
+    return false;
+
+  if (m_width == 0 || m_height == 0 || m_pixelType == 0) {
+    emit recordingError("无法开始录制: 尚未获取有效帧数据");
+    return false;
+  }
+
+  MV_CC_RECORD_PARAM recordParam;
+  memset(&recordParam, 0, sizeof(MV_CC_RECORD_PARAM));
+  recordParam.enRecordFmtType = MV_FormatType_AVI;
+  recordParam.nWidth = static_cast<unsigned short>(m_width);
+  recordParam.nHeight = static_cast<unsigned short>(m_height);
+  recordParam.fFrameRate = fps;
+  recordParam.nBitRate = bitRateKbps;
+  recordParam.enPixelType = static_cast<MvGvspPixelType>(m_pixelType);
+
+  // SDK 在 Windows 下通常需要本地编码 (GBK) 路径
+  // 使用 toLocal8Bit() 而不是 toStdString() (UTF-8)
+  m_recordingPath = filePath.toLocal8Bit().constData();
+  recordParam.strFilePath = const_cast<char *>(m_recordingPath.c_str());
+
+  qDebug() << "开始录制:" << filePath;
+  qDebug() << "  尺寸:" << m_width << "x" << m_height;
+  qDebug() << "  像素类型:" << m_pixelType;
+  qDebug() << "  FPS:" << fps << ", 码率:" << bitRateKbps << "kbps";
+
+  int ret = MV_CC_StartRecord(m_cameraHandle, &recordParam);
+  if (ret != MV_OK) {
+    emit recordingError(
+        QString("录制启动失败: 0x%1").arg(ret, 8, 16, QChar('0')));
+    return false;
+  }
+
+  m_isRecording = true;
+  emit recordingStarted(filePath);
+  return true;
+}
+
+void CameraController::stopRecording() {
+  if (!m_isRecording)
+    return;
+
+  MV_CC_StopRecord(m_cameraHandle);
+  m_isRecording = false;
+  emit recordingStopped(QString::fromStdString(m_recordingPath));
+  qDebug() << "录制已停止:" << QString::fromStdString(m_recordingPath);
+}
+
+// ============================================================================
+// 抓拍功能
+// ============================================================================
+
+bool CameraController::saveSnapshot(const QString &filePath,
+                                    SnapshotFormat format, int quality) {
+  std::lock_guard<std::mutex> lock(m_frameMutex);
+
+  if (m_frameBuffer.empty() || m_extendWidth == 0 || m_extendHeight == 0) {
+    emit snapshotError("无法抓拍: 没有可用的帧数据");
+    return false;
+  }
+
+  MV_CC_IMAGE stImg = {0};
+  stImg.enPixelType = static_cast<MvGvspPixelType>(m_pixelType);
+  stImg.nWidth = m_extendWidth;   // 使用 ExtendWidth 对齐
+  stImg.nHeight = m_extendHeight; // 使用 ExtendHeight 对齐
+  stImg.nImageLen = m_frameLen;
+  stImg.pImageBuf = m_frameBuffer.data();
+
+  MV_CC_SAVE_IMAGE_PARAM stSaveParams;
+  memset(&stSaveParams, 0, sizeof(MV_CC_SAVE_IMAGE_PARAM));
+
+  switch (format) {
+  case FORMAT_BMP:
+    stSaveParams.enImageType = MV_Image_Bmp;
+    break;
+  case FORMAT_JPEG:
+    stSaveParams.enImageType = MV_Image_Jpeg;
+    break;
+  case FORMAT_PNG:
+    stSaveParams.enImageType = MV_Image_Png;
+    break;
+  }
+  stSaveParams.nQuality = quality;
+  stSaveParams.iMethodValue = 1; // 均衡模式
+
+  // Windows MVS SDK requires ANSI/GBK path for file operations
+  // 使用 toLocal8Bit() 确保中文路径正确
+  std::string path = filePath.toLocal8Bit().constData();
+
+  // 使用 Ex2 接口 (参考官方 ImageSave.cpp 示例)
+  int ret = MV_CC_SaveImageToFileEx2(m_cameraHandle, &stImg, &stSaveParams,
+                                     const_cast<char *>(path.c_str()));
+  if (ret != MV_OK) {
+    emit snapshotError(QString("保存失败: 0x%1").arg(ret, 8, 16, QChar('0')));
+    return false;
+  }
+
+  emit snapshotSaved(filePath);
+  qDebug() << "截图已保存:" << filePath;
+  return true;
 }

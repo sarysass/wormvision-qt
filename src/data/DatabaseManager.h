@@ -41,6 +41,8 @@ public:
   bool updateVideoFilename(int id, const QString &newFilename);
   bool updateVideoDuration(int id, qint64 duration);
   bool updateVideoDurationByPath(const QString &filepath, qint64 duration);
+  bool updateVideoMetadataByPath(const QString &filepath, qint64 duration,
+                                 qint64 filesize);
 
 signals:
   void databaseError(const QString &error);

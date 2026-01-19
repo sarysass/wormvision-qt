@@ -26,14 +26,29 @@ $ninjaPath = "C:\vcpkg\downloads\tools\ninja-1.13.2-windows"
 $cmakePath = "C:\vcpkg\downloads\tools\cmake-3.31.10-windows\cmake-3.31.10-windows-x86_64\bin"
 $env:Path = "$ninjaPath;$cmakePath;$env:Path"
 
-# 4. 运行编译
+# 4. 如果 build 目录不存在或没有 build.ninja，运行 CMake configure
+$buildDir = "build"
+if (-not (Test-Path "$buildDir\build.ninja")) {
+    Write-Host "Configuring CMake..."
+    cmake -B $buildDir -S . -G Ninja `
+        -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+        -DCMAKE_BUILD_TYPE=Release `
+        -DCMAKE_MAKE_PROGRAM="$ninjaPath/ninja.exe"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "CMake configuration failed."
+        exit 1
+    }
+}
+
+# 5. 运行编译
 Write-Host "Starting build..."
-cmake --build build --config Release
+cmake --build $buildDir --config Release
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build successful!"
     
-    # 5. 运行 windeployqt 进行部署
+    # 6. 运行 windeployqt 进行部署
     $windeployqt = "C:\vcpkg\installed\x64-windows\tools\Qt6\bin\windeployqt.exe"
     $exePath = "d:\projects\wormvision-qt\build\WormVision.exe"
     

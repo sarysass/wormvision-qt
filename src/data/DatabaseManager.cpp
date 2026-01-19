@@ -62,7 +62,7 @@ bool DatabaseManager::initialize(const QString &dbPath) {
 
   if (!m_db.open()) {
     QString err = m_db.lastError().text();
-    qCritical() << "Error opening database:" << err;
+    qCritical() << "打开数据库失败:" << err;
     emit databaseError(err);
 
     if (logFile.isOpen()) {
@@ -77,7 +77,7 @@ bool DatabaseManager::initialize(const QString &dbPath) {
     stream << "OPEN SUCCESS\n";
   }
 
-  qDebug() << "Database opened at:" << finalPath;
+  qDebug() << "数据库已打开于:" << finalPath;
 
   // Create Tables
   QSqlQuery query;
@@ -93,7 +93,7 @@ bool DatabaseManager::initialize(const QString &dbPath) {
                             ")");
 
   if (!success) {
-    qCritical() << "Error creating table:" << query.lastError().text();
+    qCritical() << "创建数据表失败:" << query.lastError().text();
     emit databaseError("Failed to create tables");
     return false;
   }
@@ -118,7 +118,7 @@ int DatabaseManager::insertVideo(const VideoInfo &video) {
   query.bindValue(":upload_status", video.uploadStatus);
 
   if (!query.exec()) {
-    qWarning() << "Insert failed:" << query.lastError().text();
+    qWarning() << "插入失败:" << query.lastError().text();
     return -1;
   }
 
@@ -185,6 +185,18 @@ bool DatabaseManager::updateVideoDurationByPath(const QString &filepath,
   query.prepare(
       "UPDATE videos SET duration = :duration WHERE filepath = :filepath");
   query.bindValue(":duration", duration);
+  query.bindValue(":filepath", filepath);
+  return query.exec();
+}
+
+bool DatabaseManager::updateVideoMetadataByPath(const QString &filepath,
+                                                qint64 duration,
+                                                qint64 filesize) {
+  QSqlQuery query;
+  query.prepare("UPDATE videos SET duration = :duration, filesize = :filesize "
+                "WHERE filepath = :filepath");
+  query.bindValue(":duration", duration);
+  query.bindValue(":filesize", filesize);
   query.bindValue(":filepath", filepath);
   return query.exec();
 }

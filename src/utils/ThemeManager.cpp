@@ -36,8 +36,8 @@ void ThemeManager::applyTheme(const QString &themeName) {
     QString styleSheet = stream.readAll();
     qApp->setStyleSheet(styleSheet);
     m_currentTheme = themeName;
-    qDebug() << "Theme applied:" << themeName;
+    qDebug() << "应用主题:" << themeName;
   } else {
-    qWarning() << "Failed to load theme:" << qssPath;
+    qWarning() << "加载主题失败:" << qssPath;
   }
 }

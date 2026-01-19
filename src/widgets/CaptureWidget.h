@@ -1,11 +1,16 @@
 #ifndef CAPTUREWIDGET_H
 #define CAPTUREWIDGET_H
 
+#include <QComboBox>
 #include <QDateTime>
+#include <QDir>
+#include <QEvent>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -15,12 +20,7 @@ class ControlPanelWidget;
 class CameraController;
 
 /**
- * @brief 采集视图主控件
- *
- * 包含：
- * - 视频显示区域 (VideoDisplayWidget)
- * - 控制面板 (ControlPanelWidget)
- * - 录制状态显示
+ * @brief 实时采集与录制界面
  */
 class CaptureWidget : public QWidget {
   Q_OBJECT
@@ -30,7 +30,6 @@ public:
   ~CaptureWidget();
 
 signals:
-  void recordingStarted();
   void recordingStopped();
 
 private slots:
@@ -40,38 +39,49 @@ private slots:
   void onStartRecordingClicked();
   void onStopRecordingClicked();
   void onFpsUpdated(float fps);
+  void onRefreshDevicesClicked();
+  void onDeviceSelectionChanged(int index);
+  void onRecordTimerTimeout();
+  void updateVideoLayout();
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
+  void showEvent(QShowEvent *event) override;
+  void hideEvent(QHideEvent *event) override;
 
 private:
   void setupUI();
   void setupConnections();
 
-  // UI 组件
-  VideoDisplayWidget *m_videoDisplay;
-  ControlPanelWidget *m_controlPanel;
+  QWidget *m_videoContainer = nullptr;
+  VideoDisplayWidget *m_videoDisplay = nullptr;
+  ControlPanelWidget *m_controlPanel = nullptr;
+  CameraController *m_camera = nullptr;
 
-  // 状态栏
-  QLabel *m_statusLabel;
-  QLabel *m_fpsLabel;
-  QLabel *m_frameCountLabel;
-  QLabel *m_recordingLabel;
+  // 工具栏控件
+  QPushButton *m_startPreviewBtn = nullptr;
+  QPushButton *m_stopPreviewBtn = nullptr;
+  QPushButton *m_snapshotBtn = nullptr;
+  QPushButton *m_startRecordBtn = nullptr;
+  QPushButton *m_stopRecordBtn = nullptr;
+  QLineEdit *m_taskInfoEdit = nullptr;
 
-  // 按钮
-  QPushButton *m_startPreviewBtn;
-  QPushButton *m_stopPreviewBtn;
-  QPushButton *m_snapshotBtn;
-  QPushButton *m_startRecordBtn;
-  QPushButton *m_stopRecordBtn;
-  QLineEdit *m_taskInfoEdit;
-  class VideoRecorder *m_recorder = nullptr; // Forward declaration
+  // 状态显示
+  QLabel *m_fpsLabel = nullptr;
+  QLabel *m_frameCountLabel = nullptr;
+  QLabel *m_statusLabel = nullptr;
+  QLabel *m_recordingLabel = nullptr;
+  QLabel *m_resolutionLabel = nullptr;
 
-  bool m_isPreviewActive = false;
-  bool m_isRecording = false;
+  // 设备列表引用 (对应 ControlPanel 中的控件)
+  QComboBox *m_deviceCombo = nullptr;
+  QPushButton *m_refreshDevicesBtn = nullptr;
 
-  // Timer for recording duration
-  QTimer *m_recordTimer;
+  QTimer *m_recordTimer = nullptr;
   QDateTime m_recordStartTime;
-
-  CameraController *m_camera;
+  bool m_isPreviewActive = false;
+  int m_selectedDeviceIndex = -1;
 };
 
 #endif // CAPTUREWIDGET_H

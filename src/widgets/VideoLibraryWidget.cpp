@@ -18,10 +18,14 @@
 #include <QTableWidget>
 #include <QUrl>
 #include <QVBoxLayout>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/videoio.hpp>
 
 VideoLibraryWidget::VideoLibraryWidget(QWidget *parent) : QWidget(parent) {
+  // 确保不透明背景，防止底层控件透视
+  setAutoFillBackground(true);
+  QPalette pal = palette();
+  pal.setColor(QPalette::Window, QColor(30, 30, 30)); // 暗色背景
+  setPalette(pal);
+
   setupUI();
   setupConnections();
 
@@ -111,9 +115,9 @@ void VideoLibraryWidget::setupConnections() {
 }
 
 void VideoLibraryWidget::scanVideoFolder() {
-  QString videoDir = QCoreApplication::applicationDirPath() + "/videos";
+  QString videoDir = QCoreApplication::applicationDirPath() + "/recordings";
   QDir dir(videoDir);
-  qDebug() << "Scanning video dir:" << videoDir << "Exists:" << dir.exists();
+  qDebug() << "扫描视频目录:" << videoDir << "存在:" << dir.exists();
 
   if (!dir.exists()) {
     dir.mkpath(".");
@@ -122,7 +126,7 @@ void VideoLibraryWidget::scanVideoFolder() {
   QStringList filters;
   filters << "*.mp4" << "*.avi";
   QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
-  qDebug() << "Found" << fileList.size() << "files in directory.";
+  qDebug() << "目录中发现" << fileList.size() << "个文件。";
 
   int newCount = 0;
   int updatedCount = 0;
@@ -139,17 +143,15 @@ void VideoLibraryWidget::scanVideoFolder() {
     int id = DatabaseManager::instance().insertVideo(info);
     if (id > 0) {
       newCount++;
-      qDebug() << "Inserted new video:" << info.filename << "ID:" << id
+      qDebug() << "插入新视频:" << info.filename << "ID:" << id
                << "Duration:" << info.duration;
     } else {
-      // Video already exists - update duration if needed
-      if (info.duration > 0) {
-        if (DatabaseManager::instance().updateVideoDurationByPath(
-                info.filepath, info.duration)) {
-          updatedCount++;
-          qDebug() << "Updated duration for:" << info.filename
-                   << "Duration:" << info.duration;
-        }
+      // Video already exists - update duration and filesize
+      if (DatabaseManager::instance().updateVideoMetadataByPath(
+              info.filepath, info.duration, info.filesize)) {
+        updatedCount++;
+        qDebug() << "更新元数据:" << info.filename
+                 << "Duration:" << info.duration << "Size:" << info.filesize;
       }
     }
   }
@@ -228,47 +230,55 @@ QString VideoLibraryWidget::formatFileSize(qint64 bytes) {
   return QString("%1 GB").arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 2);
 }
 
-QPixmap VideoLibraryWidget::generateThumbnail(const QString &filepath) {
-  cv::VideoCapture cap(filepath.toStdString());
-  if (!cap.isOpened()) {
-    return QPixmap();
-  }
-
-  cv::Mat frame;
-  if (!cap.read(frame)) {
-    cap.release();
-    return QPixmap();
-  }
-  cap.release();
-
-  // Resize to thumbnail size (60x45 to match row height)
-  cv::Mat resized;
-  cv::resize(frame, resized, cv::Size(60, 45));
-
-  // Convert BGR to RGB
-  cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
-
-  // Convert to QImage then QPixmap
-  QImage img(resized.data, resized.cols, resized.rows, resized.step,
-             QImage::Format_RGB888);
-  return QPixmap::fromImage(img.copy()); // Copy because Mat data will be freed
-}
-
 double VideoLibraryWidget::getVideoDuration(const QString &filepath) {
-  // Use toLocal8Bit for Windows Chinese path compatibility
-  cv::VideoCapture cap(filepath.toLocal8Bit().constData());
-  if (!cap.isOpened()) {
+  // 直接解析 AVI 文件头获取时长
+  // AVI 结构: RIFF -> AVI -> hdrl -> avih (包含 MicroSecPerFrame 和
+  // TotalFrames)
+
+  QFile file(filepath);
+  if (!file.open(QIODevice::ReadOnly)) {
     return 0.0;
   }
 
-  double fps = cap.get(cv::CAP_PROP_FPS);
-  double frameCount = cap.get(cv::CAP_PROP_FRAME_COUNT);
-  cap.release();
+  // 读取文件头 (256 字节足够包含 avih 块)
+  QByteArray header = file.read(256);
+  file.close();
 
-  if (fps > 0) {
-    return frameCount / fps;
+  if (header.size() < 256) {
+    return 0.0;
   }
-  return 0.0;
+
+  // 验证 RIFF 和 AVI 签名
+  if (header.mid(0, 4) != "RIFF" || header.mid(8, 4) != "AVI ") {
+    return 0.0;
+  }
+
+  // 查找 avih 块 (通常在偏移 32 处)
+  int avihPos = header.indexOf("avih");
+  if (avihPos < 0 || avihPos + 56 > header.size()) {
+    return 0.0;
+  }
+
+  // avih 结构 (偏移从 avih 标签后的 4 字节大小开始):
+  // +0: dwMicroSecPerFrame (4 bytes)
+  // +4: dwMaxBytesPerSec (4 bytes)
+  // +8: dwPaddingGranularity (4 bytes)
+  // +12: dwFlags (4 bytes)
+  // +16: dwTotalFrames (4 bytes)
+
+  const char *data = header.constData() + avihPos + 8; // 跳过 "avih" 和 size
+
+  quint32 microSecPerFrame = *reinterpret_cast<const quint32 *>(data);
+  quint32 totalFrames = *reinterpret_cast<const quint32 *>(data + 16);
+
+  if (microSecPerFrame == 0 || totalFrames == 0) {
+    return 0.0;
+  }
+
+  // 计算时长: 总帧数 * 每帧微秒 / 1,000,000
+  double duration =
+      static_cast<double>(totalFrames) * microSecPerFrame / 1000000.0;
+  return duration;
 }
 
 void VideoLibraryWidget::onRefreshClicked() {
@@ -277,7 +287,7 @@ void VideoLibraryWidget::onRefreshClicked() {
 }
 
 void VideoLibraryWidget::onOpenFolderClicked() {
-  QString path = QCoreApplication::applicationDirPath() + "/videos";
+  QString path = QCoreApplication::applicationDirPath() + "/recordings";
   QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 

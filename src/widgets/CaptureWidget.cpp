@@ -1,117 +1,126 @@
-#include "CaptureWidget.h"
-#include "../data/DatabaseManager.h"
-#include "../services/CameraController.h"
-#include "../services/VideoRecorder.h"
-#include "ControlPanelWidget.h"
-#include "VideoDisplayWidget.h"
+#include "widgets/CaptureWidget.h"
+#include "services/CameraController.h"
+#include "widgets/ControlPanelWidget.h"
+#include "widgets/VideoDisplayWidget.h"
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QDebug>
 #include <QDir>
-#include <QFileInfo>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QLineEdit>
+#include <QHideEvent>
 #include <QMessageBox>
-#include <QPushButton>
-#include <QRegularExpression>
+#include <QShowEvent>
 #include <QSplitter>
-#include <QTimer>
 #include <QVBoxLayout>
 
-CaptureWidget::CaptureWidget(QWidget *parent)
-    : QWidget(parent), m_videoDisplay(nullptr), m_controlPanel(nullptr),
-      m_isPreviewActive(false), m_isRecording(false), m_camera(nullptr) {
+// ============================================================================
+// 构造与析构
+// ============================================================================
+
+CaptureWidget::CaptureWidget(QWidget *parent) : QWidget(parent) {
   m_camera = new CameraController(this);
-  m_recorder = new VideoRecorder(this);
-  m_recordTimer = new QTimer(this);
   setupUI();
   setupConnections();
 }
 
-CaptureWidget::~CaptureWidget() {}
+CaptureWidget::~CaptureWidget() {
+  if (m_camera->isGrabbing()) {
+    m_camera->stopGrabbing();
+  }
+  m_camera->close();
+}
+
+// ============================================================================
+// UI 构建
+// ============================================================================
 
 void CaptureWidget::setupUI() {
-  QHBoxLayout *mainLayout = new QHBoxLayout(this);
+  QVBoxLayout *mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // 创建分割器
+  // ===== 主内容区 =====
   QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
 
-  // 左侧：视频显示区域
-  QWidget *videoContainer = new QWidget(this);
-  QVBoxLayout *videoLayout = new QVBoxLayout(videoContainer);
-  videoLayout->setContentsMargins(5, 5, 5, 5);
+  // 视频显示区
+  // 视频显示区
+  m_videoContainer = new QWidget(this);
+  m_videoContainer->setAutoFillBackground(true);
+  // m_videoContainer->setStyleSheet("background-color: #282828;"); //
+  // 移除强制背景，跟随主题
+  m_videoContainer->installEventFilter(this);
 
-  m_videoDisplay = new VideoDisplayWidget(this);
-  m_videoDisplay->setMinimumSize(640, 480);
-  videoLayout->addWidget(m_videoDisplay, 1);
+  m_videoDisplay = new VideoDisplayWidget(m_videoContainer);
+  // m_videoDisplay->setMinimumSize(640, 480); //去掉最小限制，由容器控制
 
-  // 底部工具栏
-  QHBoxLayout *toolbarLayout = new QHBoxLayout();
+  splitter->addWidget(m_videoContainer);
 
-  m_startPreviewBtn = new QPushButton("开始预览", this);
-  m_stopPreviewBtn = new QPushButton("停止预览", this);
-  m_stopPreviewBtn->setEnabled(false);
-  m_snapshotBtn = new QPushButton("抓拍", this);
-  m_snapshotBtn->setEnabled(false);
-  m_startRecordBtn = new QPushButton("开始录制", this);
-  m_startRecordBtn->setEnabled(false);
-  m_stopRecordBtn = new QPushButton("停止录制", this);
-  m_stopRecordBtn->setEnabled(false);
-
-  toolbarLayout->addWidget(m_startPreviewBtn);
-  toolbarLayout->addWidget(m_stopPreviewBtn);
-  toolbarLayout->addSpacing(20);
-  toolbarLayout->addWidget(m_snapshotBtn);
-  toolbarLayout->addSpacing(20);
-
-  // Task info input for recording filename
-  QLabel *taskLabel = new QLabel("任务:", this);
-  m_taskInfoEdit = new QLineEdit(this);
-  m_taskInfoEdit->setPlaceholderText("输入实验名称 (可选)");
-  m_taskInfoEdit->setMaximumWidth(200);
-  toolbarLayout->addWidget(taskLabel);
-  toolbarLayout->addWidget(m_taskInfoEdit);
-  toolbarLayout->addSpacing(10);
-
-  toolbarLayout->addWidget(m_startRecordBtn);
-  toolbarLayout->addWidget(m_stopRecordBtn);
-  toolbarLayout->addStretch();
-
-  // 状态标签
-  m_fpsLabel = new QLabel("FPS: --", this);
-  m_frameCountLabel = new QLabel("帧数: 0", this); // Total frames
-  m_recordingLabel = new QLabel("", this);
-  m_recordingLabel->setStyleSheet("color: red; font-weight: bold;");
-  m_statusLabel = new QLabel("就绪", this);
-
-  toolbarLayout->addWidget(m_fpsLabel);
-  toolbarLayout->addSpacing(20);
-  toolbarLayout->addWidget(m_frameCountLabel); // Add to layout
-  toolbarLayout->addSpacing(20);
-  toolbarLayout->addWidget(m_recordingLabel);
-  toolbarLayout->addSpacing(20);
-  toolbarLayout->addWidget(m_statusLabel);
-
-  videoLayout->addLayout(toolbarLayout);
-
-  splitter->addWidget(videoContainer);
-
-  // 右侧：控制面板
+  // 控制面板
   m_controlPanel = new ControlPanelWidget(this);
   m_controlPanel->setFixedWidth(280);
   splitter->addWidget(m_controlPanel);
 
-  // 设置分割器比例
   splitter->setStretchFactor(0, 1);
   splitter->setStretchFactor(1, 0);
+  mainLayout->addWidget(splitter, 1);
 
-  mainLayout->addWidget(splitter);
+  // ===== 底部工具栏 =====
+  QWidget *toolbar = new QWidget(this);
+  toolbar->setObjectName("captureToolbar");
+  QHBoxLayout *toolLayout = new QHBoxLayout(toolbar);
+  toolLayout->setContentsMargins(10, 5, 10, 5);
+  toolLayout->setSpacing(10);
+
+  m_startPreviewBtn = new QPushButton("开始预览", toolbar);
+  m_stopPreviewBtn = new QPushButton("停止预览", toolbar);
+  m_stopPreviewBtn->setEnabled(false);
+  m_snapshotBtn = new QPushButton("抓拍", toolbar);
+  m_snapshotBtn->setEnabled(false);
+
+  toolLayout->addWidget(m_startPreviewBtn);
+  toolLayout->addWidget(m_stopPreviewBtn);
+  toolLayout->addWidget(m_snapshotBtn);
+
+  toolLayout->addWidget(new QLabel("任务:", toolbar));
+  m_taskInfoEdit = new QLineEdit(toolbar);
+  m_taskInfoEdit->setPlaceholderText("输入实验名称 (可选)");
+  m_taskInfoEdit->setFixedWidth(150);
+  toolLayout->addWidget(m_taskInfoEdit);
+
+  m_startRecordBtn = new QPushButton("开始录制", toolbar);
+  m_startRecordBtn->setEnabled(false);
+  m_stopRecordBtn = new QPushButton("停止录制", toolbar);
+  m_stopRecordBtn->setEnabled(false);
+  toolLayout->addWidget(m_startRecordBtn);
+  toolLayout->addWidget(m_stopRecordBtn);
+
+  toolLayout->addStretch();
+
+  // 状态标签
+  m_fpsLabel = new QLabel("FPS: --", toolbar);
+  m_resolutionLabel = new QLabel("分辨率: --", toolbar);
+  m_frameCountLabel = new QLabel("帧数: 0", toolbar);
+  m_recordingLabel = new QLabel("", toolbar);
+  m_recordingLabel->setStyleSheet("color: red; font-weight: bold;");
+  m_statusLabel = new QLabel("就绪", toolbar);
+
+  toolLayout->addWidget(m_fpsLabel);
+  toolLayout->addWidget(m_resolutionLabel);
+  toolLayout->addWidget(m_frameCountLabel);
+  toolLayout->addWidget(m_recordingLabel);
+  toolLayout->addWidget(m_statusLabel);
+
+  mainLayout->addWidget(toolbar);
+
+  // 获取设备选择控件引用
+  m_deviceCombo = m_controlPanel->deviceCombo();
+  m_refreshDevicesBtn = m_controlPanel->refreshDevicesBtn();
 }
 
+// ============================================================================
+// 信号连接
+// ============================================================================
+
 void CaptureWidget::setupConnections() {
+  // ===== 工具栏按钮 =====
   connect(m_startPreviewBtn, &QPushButton::clicked, this,
           &CaptureWidget::onStartPreviewClicked);
   connect(m_stopPreviewBtn, &QPushButton::clicked, this,
@@ -122,106 +131,178 @@ void CaptureWidget::setupConnections() {
           &CaptureWidget::onStartRecordingClicked);
   connect(m_stopRecordBtn, &QPushButton::clicked, this,
           &CaptureWidget::onStopRecordingClicked);
-  connect(m_videoDisplay, &VideoDisplayWidget::fpsUpdated, this,
-          &CaptureWidget::onFpsUpdated);
 
-  // 相机信号连接
-  // 相机信号连接
-  connect(m_camera, &CameraController::frameReady, this,
-          [this](const QImage &frame, int frameIdx) {
-            // Display & Update Counters
-            m_videoDisplay->updateFrame(frame);
+  // ===== 设备选择 =====
+  connect(m_refreshDevicesBtn, &QPushButton::clicked, this,
+          &CaptureWidget::onRefreshDevicesClicked);
+  connect(m_deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &CaptureWidget::onDeviceSelectionChanged);
 
-            // Update status overlay info
-            m_videoDisplay->setFrameCountInfo(frameIdx);
-            if (frameIdx == 1) {
-              // Set resolution from first frame
-              m_videoDisplay->setResolutionInfo(frame.width(), frame.height());
-            }
-
-            // Update UI (every ~10 frames to save UI thread CPU)
-            if (frameIdx % 10 == 0) {
-              m_frameCountLabel->setText(QString("帧数: %1").arg(frameIdx));
-            }
-
-            // Record (Convert back to raw bytes? Or create VideoRecorder that
-            // accepts QImage)
-            if (m_isRecording) {
-              // VideoRecorder (OpenCV) needs BGR or RGB data.
-              // QImage (RGB888) bits are accessible.
-              // We need to implement processFrame(QImage) in VideoRecorder
-              m_recorder->processFrame(frame);
-            }
-          });
-
-  connect(m_camera, &CameraController::error, this, [this](const QString &msg) {
-    QMessageBox::critical(this, "相机错误", msg);
-    onStopPreviewClicked(); // Reset UI
-  });
-
-  connect(m_recorder, &VideoRecorder::recordingStopped, this,
-          [](const QString &path) {
-            QFileInfo info(path);
-            VideoInfo v;
-            v.filename = info.fileName();
-            v.filepath = info.absoluteFilePath();
-            v.filesize = info.size();
-            v.createdAt = info.birthTime(); // or current time
-            // Duration? We didn't track it precisely in Recorder. Utils needed
-            // to read it back or approximate. For now, leave duration 0.
-
-            DatabaseManager::instance().insertVideo(v);
-            qDebug() << "Video saved and added to DB:" << path;
-          });
-
-  connect(m_recorder, &VideoRecorder::recordingError, this,
-          [this](const QString &msg) {
-            onStopRecordingClicked(); // Stop UI state
-            QMessageBox::warning(this, "录制出错", msg);
-          });
-
-  connect(m_recordTimer, &QTimer::timeout, this, [this]() {
-    qint64 duration = m_recordStartTime.secsTo(QDateTime::currentDateTime());
-    int h = duration / 3600;
-    int m = (duration % 3600) / 60;
-    int s = duration % 60;
-    m_statusLabel->setText(QString("REC %1:%2:%3")
-                               .arg(h, 2, 10, QChar('0'))
-                               .arg(m, 2, 10, QChar('0'))
-                               .arg(s, 2, 10, QChar('0')));
-  });
-
-  connect(m_camera, &CameraController::cameraOpened, this,
-          [this]() { m_statusLabel->setText("相机已连接"); });
-
-  connect(m_camera, &CameraController::cameraClosed, this,
-          [this]() { m_statusLabel->setText("相机已断开"); });
-
-  // Connect ControlPanelWidget signals to CameraController
-  connect(m_controlPanel, &ControlPanelWidget::exposureChanged, m_camera,
-          &CameraController::setExposure);
-  connect(m_controlPanel, &ControlPanelWidget::gainChanged, m_camera,
-          &CameraController::setGain);
-  connect(m_controlPanel, &ControlPanelWidget::frameRateChanged, m_camera,
-          &CameraController::setFrameRate);
-  connect(m_controlPanel, &ControlPanelWidget::binningChanged, m_camera,
-          &CameraController::setBinning);
-
-  // Connect camera range signals to ControlPanelWidget to set ranges from SDK
+  // ===== CameraController → ControlPanel (参数范围) =====
   connect(m_camera, &CameraController::exposureRangeReady, m_controlPanel,
           &ControlPanelWidget::setExposureRange);
   connect(m_camera, &CameraController::gainRangeReady, m_controlPanel,
           &ControlPanelWidget::setGainRange);
   connect(m_camera, &CameraController::frameRateRangeReady, m_controlPanel,
           &ControlPanelWidget::setFrameRateRange);
+  connect(m_camera, &CameraController::resolutionChanged, m_controlPanel,
+          &ControlPanelWidget::setResolution);
+  connect(m_camera, &CameraController::resolutionReady, m_controlPanel,
+          &ControlPanelWidget::setResolution);
+  connect(m_camera, &CameraController::resolutionMaxReady, m_controlPanel,
+          &ControlPanelWidget::setResolutionMax);
+  connect(m_camera, &CameraController::offsetReady, m_controlPanel,
+          &ControlPanelWidget::setOffset);
+  connect(m_camera, &CameraController::resultingFrameRateReady, m_controlPanel,
+          &ControlPanelWidget::setResultingFrameRate);
+
+  // ===== 视频显示尺寸同步 =====
+  connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
+          &VideoDisplayWidget::setImageSize);
+  connect(
+      m_camera, &CameraController::resolutionReady,
+      [this](int w, int h, int, int) { m_videoDisplay->setImageSize(w, h); });
+  connect(m_videoDisplay, &VideoDisplayWidget::imageSizeChanged, this,
+          [this](int, int) { this->updateVideoLayout(); });
+
+  // ===== 视频显示尺寸同步 =====
+  connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
+          &VideoDisplayWidget::setImageSize);
+  connect(
+      m_camera, &CameraController::resolutionReady,
+      [this](int w, int h, int, int) { m_videoDisplay->setImageSize(w, h); });
+  connect(m_videoDisplay, &VideoDisplayWidget::imageSizeChanged, this,
+          [this](int, int) { this->updateVideoLayout(); });
+
+  // ===== ControlPanel → CameraController (参数设置) =====
+  connect(m_controlPanel, &ControlPanelWidget::exposureChanged, m_camera,
+          &CameraController::setExposure);
+  connect(m_controlPanel, &ControlPanelWidget::gainChanged, m_camera,
+          &CameraController::setGain);
+  connect(m_controlPanel, &ControlPanelWidget::frameRateChanged, m_camera,
+          &CameraController::setFrameRate);
+  connect(m_controlPanel, &ControlPanelWidget::frameRateEnableChanged, m_camera,
+          &CameraController::setFrameRateEnable);
+  connect(m_controlPanel, &ControlPanelWidget::offsetXChanged, m_camera,
+          &CameraController::setOffsetX);
+  connect(m_controlPanel, &ControlPanelWidget::offsetYChanged, m_camera,
+          &CameraController::setOffsetY);
+  connect(m_controlPanel, &ControlPanelWidget::widthChanged, m_camera,
+          &CameraController::setWidth);
+  connect(m_controlPanel, &ControlPanelWidget::heightChanged, m_camera,
+          &CameraController::setHeight);
+
+  // ===== CameraController → UI 更新 =====
+  connect(m_camera, &CameraController::cameraOpened, this, [this]() {
+    m_controlPanel->enableControls(true);
+    m_statusLabel->setText("相机已连接");
+  });
+  connect(m_camera, &CameraController::cameraClosed, this, [this]() {
+    m_controlPanel->enableControls(false);
+    m_statusLabel->setText("就绪");
+  });
+  connect(m_camera, &CameraController::resolutionChanged, this,
+          [this](int w, int h) {
+            m_resolutionLabel->setText(QString("分辨率: %1x%2").arg(w).arg(h));
+            m_videoDisplay->setImageSize(w, h);
+          });
+  connect(m_camera, &CameraController::frameRendered, this, [this](int count) {
+    m_frameCountLabel->setText(QString("帧数: %1").arg(count));
+    m_videoDisplay->notifyFrameRendered();
+  });
+  connect(m_camera, &CameraController::recordingStarted, this,
+          [this](const QString &) { m_recordingLabel->setText("● 录制中"); });
+  connect(m_camera, &CameraController::recordingStopped, this,
+          [this](const QString &) { m_recordingLabel->setText(""); });
+  connect(m_camera, &CameraController::recordingError, this,
+          [this](const QString &msg) {
+            m_recordingLabel->setText("");
+            m_startRecordBtn->setEnabled(true);
+            m_stopRecordBtn->setEnabled(false);
+            QMessageBox::warning(this, "录制错误", msg);
+          });
+
+  // ===== VideoDisplayWidget FPS 更新 =====
+  connect(m_videoDisplay, &VideoDisplayWidget::fpsUpdated, this,
+          &CaptureWidget::onFpsUpdated);
+
+  // 初始刷新设备列表
+  onRefreshDevicesClicked();
+
+  m_recordTimer = new QTimer(this);
+  connect(m_recordTimer, &QTimer::timeout, this,
+          &CaptureWidget::onRecordTimerTimeout);
+}
+
+// ============================================================================
+// 槽函数实现
+// ============================================================================
+
+void CaptureWidget::onRefreshDevicesClicked() {
+  m_deviceCombo->blockSignals(true);
+  m_deviceCombo->clear();
+
+  auto devices = CameraController::enumerateDevices();
+  for (const auto &dev : devices) {
+    QString displayName = QString("%1 [%2]").arg(dev.name, dev.serialNumber);
+    m_deviceCombo->addItem(displayName, dev.index);
+  }
+
+  m_deviceCombo->blockSignals(false);
+
+  if (m_deviceCombo->count() > 0) {
+    // 默认选中第一个设备，并手动触发选择逻辑以连接相机
+    m_deviceCombo->setCurrentIndex(0);
+    onDeviceSelectionChanged(0);
+  } else {
+    m_selectedDeviceIndex = -1;
+  }
+}
+
+void CaptureWidget::onDeviceSelectionChanged(int index) {
+  if (index >= 0) {
+    m_selectedDeviceIndex = m_deviceCombo->itemData(index).toInt();
+
+    // 逻辑优化1: 列表选择后，触发读取相机参数 (Implicit Connect)
+    // 如果已有相机打开，先关闭
+    if (m_camera->isOpen()) {
+      if (m_camera->isGrabbing())
+        m_camera->stopGrabbing();
+      m_camera->close();
+    }
+
+    // 尝试打开新选择的相机以读取参数
+    if (m_camera->open(m_selectedDeviceIndex)) {
+      // 打开成功，更新状态
+      m_statusLabel->setText("相机已连接 (就绪)");
+      m_startPreviewBtn->setEnabled(true);
+    } else {
+      m_statusLabel->setText("相机连接失败");
+      m_startPreviewBtn->setEnabled(false);
+    }
+  }
 }
 
 void CaptureWidget::onStartPreviewClicked() {
-  if (!m_camera->open()) {
+  if (m_selectedDeviceIndex < 0) {
+    m_statusLabel->setText("请先选择相机");
     return;
   }
 
+  // 设置渲染句柄
+  m_camera->setDisplayHandle(m_videoDisplay->getNativeHandle());
+
+  // 如果尚未打开 (例如初始化失败或被手动关闭)，尝试重新打开
+  if (!m_camera->isOpen()) {
+    if (!m_camera->open(m_selectedDeviceIndex)) {
+      m_statusLabel->setText("打开相机失败");
+      return;
+    }
+  }
+
   if (!m_camera->startGrabbing()) {
+    m_statusLabel->setText("启动采集失败");
+    // 注意：这里不再自动 close，保持连接状态以便重试或调整参数
     return;
   }
 
@@ -229,146 +310,156 @@ void CaptureWidget::onStartPreviewClicked() {
   m_startPreviewBtn->setEnabled(false);
   m_stopPreviewBtn->setEnabled(true);
   m_snapshotBtn->setEnabled(true);
+
+  // 只有在预览时才允许录制
   m_startRecordBtn->setEnabled(true);
+
+  // 预览时禁用分辨率设置 (防止硬件错误)
+  m_controlPanel->setResolutionEnabled(false);
+
+  m_videoDisplay->setStreaming(true);
   m_statusLabel->setText("预览中...");
-  m_videoDisplay->setOnlineStatus(true);
 }
 
 void CaptureWidget::onStopPreviewClicked() {
+  if (m_camera->isRecording()) {
+    onStopRecordingClicked(); // 确保正确停止录制逻辑
+  }
+
   m_camera->stopGrabbing();
-  m_camera->close();
+  // 逻辑优化：停止预览时不关闭相机连接，保持参数可调
+  // m_camera->close();
 
   m_isPreviewActive = false;
   m_startPreviewBtn->setEnabled(true);
   m_stopPreviewBtn->setEnabled(false);
   m_snapshotBtn->setEnabled(false);
   m_startRecordBtn->setEnabled(false);
-  m_statusLabel->setText("已停止");
-  m_videoDisplay->setOnlineStatus(false);
+  m_stopRecordBtn->setEnabled(false);
+
+  // 停止预览后恢复分辨率设置
+  m_controlPanel->setResolutionEnabled(true);
+
+  m_videoDisplay->setStreaming(false);
+  m_videoDisplay->clear(); // 明确清空并在此时刷黑
+
+  m_statusLabel->setText("预览已停止 (连接保持)");
 }
 
 void CaptureWidget::onCaptureSnapshotClicked() {
-  QImage image = m_videoDisplay->getCurrentFrame();
-  if (image.isNull()) {
-    QMessageBox::warning(this, "抓拍失败", "当前没有图像");
+  if (!m_isPreviewActive)
     return;
-  }
 
-  // Use application dir for consistent snapshots path
   QString dirPath = QCoreApplication::applicationDirPath() + "/snapshots";
-  QDir dir(dirPath);
-  if (!dir.exists()) {
-    dir.mkpath(".");
-  }
+  QDir().mkpath(dirPath);
 
-  QString filename =
-      QString("SNAP_%1.jpg")
-          .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz"));
-  QString fullPath = dir.filePath(filename);
+  QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+  QString taskName = m_taskInfoEdit->text().trimmed();
+  if (taskName.isEmpty())
+    taskName = "snapshot";
 
-  if (image.save(fullPath, "JPG")) {
-    // Optional: Flash effect or status update
-    m_statusLabel->setText("已保存: " + filename);
+  QString filename = QString("%1_%2.jpg").arg(taskName, timestamp);
+  QString filePath = QDir(dirPath).absoluteFilePath(filename);
 
-    // FUTURE: Add to Database if we expand DB to handle Images
-  } else {
-    QMessageBox::critical(this, "错误", "无法保存图像文件");
-  }
+  m_camera->saveSnapshot(filePath, CameraController::FORMAT_JPEG, 90);
 }
 
 void CaptureWidget::onStartRecordingClicked() {
   if (!m_isPreviewActive)
     return;
 
-  // Determine recording path relative to application directory to ensure
-  // consistency regardless of where the app is launched from.
-  QString dirPath = QCoreApplication::applicationDirPath() + "/videos";
-  QDir dir(dirPath);
-  if (!dir.exists())
-    dir.mkpath(".");
+  QString dirPath = QCoreApplication::applicationDirPath() + "/recordings";
+  QDir().mkpath(dirPath);
 
-  // Generate filename with task info if provided
-  // Format: YYYYMMDD_任务名称.mp4 (date first)
-  QString taskInfo = m_taskInfoEdit->text().trimmed();
-  QString dateStr = QDateTime::currentDateTime().toString("yyyyMMdd");
-  QString baseFilename;
-  if (!taskInfo.isEmpty()) {
-    // Replace non-alphanumeric except Chinese and underscore
-    taskInfo.replace(QRegularExpression("[^a-zA-Z0-9\\u4e00-\\u9fa5_]"), "_");
-    baseFilename = QString("%1_%2").arg(dateStr, taskInfo);
-  } else {
-    QString timestamp =
-        QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    baseFilename = QString("VID_%1").arg(timestamp);
-  }
+  QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+  QString taskName = m_taskInfoEdit->text().trimmed();
+  if (taskName.isEmpty())
+    taskName = "recording";
 
-  // Check for duplicates and add suffix if needed
-  QString filename = baseFilename + ".mp4";
-  QString fullPath = dir.filePath(filename);
-  int suffix = 1;
-  while (QFile::exists(fullPath)) {
-    filename = QString("%1_%2.mp4").arg(baseFilename).arg(suffix);
-    fullPath = dir.filePath(filename);
-    suffix++;
-  }
+  // SDK 仅支持 AVI 格式
+  QString filename = QString("%1_%2.avi").arg(taskName, timestamp);
+  QString filePath = QDir(dirPath).absoluteFilePath(filename);
 
-  // Get current FPS from camera or display?
-  // CameraController has getFrameRate() but it's not exposed properly?
-  // For now use hardcoded 25 or get from display stats.
-  double fps = 25.0; // TODO: Get real FPS
-
-  // Use current camera resolution.
-  // We can get it from m_videoDisplay->getCurrentFrame().size() if we trust it
-  // matches, or better, store it in startPreview. For safety, assume 640x480 or
-  // wait for first frame? Let's rely on the frame processor to handle size, but
-  // startRecording needs size for VideoWriter. We can get it from the last
-  // frame.
-  QImage lastFrame = m_videoDisplay->getCurrentFrame();
-  if (lastFrame.isNull()) {
-    QMessageBox::warning(this, "警告", "无法获取图像尺寸");
-    return;
-  }
-
-  if (m_recorder->startRecording(fullPath, lastFrame.width(),
-                                 lastFrame.height(), fps)) {
-    m_isRecording = true;
+  if (m_camera->startRecording(filePath, 23.0f, 4000)) {
     m_startRecordBtn->setEnabled(false);
     m_stopRecordBtn->setEnabled(true);
-
     m_recordStartTime = QDateTime::currentDateTime();
+
+    // 启动录制计时器
     m_recordTimer->start(1000);
-    m_statusLabel->setText("REC 00:00:00");
-    m_recordingLabel->setText(
-        "● 录制中");         // Added this line to update recording label
-    emit recordingStarted(); // Added this line to emit signal
+    onRecordTimerTimeout(); // 立即更新一次
   }
 }
 
 void CaptureWidget::onStopRecordingClicked() {
-  if (!m_isRecording)
-    return;
-
-  m_recorder->stopRecording();
-  m_isRecording = false;
-  m_recordTimer->stop();
-
+  m_camera->stopRecording();
   m_startRecordBtn->setEnabled(true);
   m_stopRecordBtn->setEnabled(false);
-  m_statusLabel->setText("预览中...");
-  m_recordingLabel->setText(""); // Added this line to clear recording label
-
-  // Add to Database
-  // We stored the filename in member or we can pass it via signal?
-  // The 'startRecording' determined the path.
-  // Let's reconstruct or use the signal 'recordingStopped'.
-  // But strictly, we should do DB insert here if we have the path.
-  // Actually, we can do it in the connection to recordingStopped.
-
-  // Let's emit a signal 'videoSaved' so Library can refresh?
-  // Or just insert into DB.
+  m_recordTimer->stop();
   emit recordingStopped();
+}
+
+void CaptureWidget::onRecordTimerTimeout() {
+  qint64 seconds = m_recordStartTime.secsTo(QDateTime::currentDateTime());
+  QTime time(0, 0);
+  time = time.addSecs(static_cast<int>(seconds));
+  m_recordingLabel->setText(QString("● 录制中 %1").arg(time.toString("mm:ss")));
 }
 
 void CaptureWidget::onFpsUpdated(float fps) {
   m_fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 1));
+}
+
+void CaptureWidget::updateVideoLayout() {
+  if (!m_videoContainer || !m_videoDisplay)
+    return;
+
+  QSize containerSize = m_videoContainer->size();
+  QSize imageSize = m_videoDisplay->sizeHint();
+
+  if (imageSize.isEmpty()) {
+    m_videoDisplay->setGeometry(0, 0, containerSize.width(),
+                                containerSize.height());
+    return;
+  }
+
+  QSize scaledSize = imageSize.scaled(containerSize, Qt::KeepAspectRatio);
+
+  int x = (containerSize.width() - scaledSize.width()) / 2;
+  int y = (containerSize.height() - scaledSize.height()) / 2;
+
+  m_videoDisplay->setGeometry(x, y, scaledSize.width(), scaledSize.height());
+}
+
+bool CaptureWidget::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == m_videoContainer && event->type() == QEvent::Resize) {
+    updateVideoLayout();
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
+void CaptureWidget::resizeEvent(QResizeEvent *event) {
+  QWidget::resizeEvent(event);
+}
+
+void CaptureWidget::showEvent(QShowEvent *event) {
+  QWidget::showEvent(event);
+  if (m_videoDisplay) {
+    m_videoDisplay->show(); // Show native window
+  }
+  if (m_camera && m_videoDisplay) {
+    m_camera->setDisplayHandle(m_videoDisplay->getNativeHandle());
+  }
+}
+
+void CaptureWidget::hideEvent(QHideEvent *event) {
+  QWidget::hideEvent(event);
+  if (m_camera) {
+    m_camera->setDisplayHandle(nullptr);
+  }
+  if (m_videoDisplay) {
+    m_videoDisplay->setStreaming(false); // 确保重置状态
+    m_videoDisplay->clear();
+    m_videoDisplay->hide(); // Hide native window to prevent ghosting
+  }
 }

@@ -26,6 +26,26 @@
   - [ ] 编译成功
   - [ ] 运行测试图片循环播放 DEMO
 
+## 录像性能优化
+
+- [x] **使用 SDK 内置录像 API 替代 OpenCV VideoWriter**
+  - [x] 分析海康 MVS 软件低 CPU 占用原因
+  - [x] 发现 SDK 提供 `MV_CC_StartRecord` / `MV_CC_InputOneFrame` / `MV_CC_StopRecord` API
+  - [x] 在 `CameraController` 中实现 SDK 录像功能
+    - [x] `startRecording(filePath, fps, bitRateKbps)` 方法
+    - [x] `stopRecording()` 方法
+    - [x] 在 `grabLoop` 中调用 `MV_CC_InputOneFrame` 发送原始帧
+  - [x] 更新 `CaptureWidget` 使用新的 SDK 录像
+    - [x] 移除 `VideoRecorder` 依赖
+    - [x] 文件格式从 MP4 改为 AVI (SDK 仅支持 AVI)
+  - [x] 编译验证通过
+
+**优化效果预期：**
+- CPU 占用: ~50% → ~10% (原始帧直接送入 SDK 编码器，无需颜色转换)
+- 文件大小: 可控码率 (默认 4000 kbps)
+- 编码器: SDK 内置优化编码
+
+
 ## 云平台集成 (wormstudio.cloud)
 
 ### 登录功能 - Mode B 设备授权流程

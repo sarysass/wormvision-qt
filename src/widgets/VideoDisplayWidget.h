@@ -1,23 +1,18 @@
 #ifndef VIDEODISPLAYWIDGET_H
 #define VIDEODISPLAYWIDGET_H
 
-#include <QImage>
-#include <QMutex>
-#include <QOpenGLFunctions>
-#include <QOpenGLTexture>
-#include <QOpenGLWidget>
+#include <QElapsedTimer>
+#include <QResizeEvent>
+#include <QSize>
 #include <QTimer>
+#include <QWidget>
 
 /**
- * @brief OpenGL 视频显示组件
+ * @brief SDK 直接渲染视频显示组件
  *
- * 使用 OpenGL 纹理渲染相机图像，实现高性能预览。
- * 支持：
- * - 实时帧更新
- * - 缩放和平移
- * - 测试图片循环播放（用于开发调试）
+ * 使用海康 SDK 的 MV_CC_DisplayOneFrameEx 直接渲染到窗口句柄。
  */
-class VideoDisplayWidget : public QOpenGLWidget, protected QOpenGLFunctions {
+class VideoDisplayWidget : public QWidget {
   Q_OBJECT
 
 public:
@@ -25,114 +20,59 @@ public:
   ~VideoDisplayWidget();
 
   /**
-   * @brief 更新显示帧
-   * @param image 要显示的图像
+   * @brief 获取原生窗口句柄用于 SDK 直接渲染
    */
-  void updateFrame(const QImage &image);
+  void *getNativeHandle();
 
   /**
-   * @brief 从原始数据更新帧
-   * @param data 图像数据
-   * @param width 宽度
-   * @param height 高度
-   * @param format 像素格式 (RGB888, Grayscale8 等)
+   * @brief 通知帧已更新 (用于 EMA FPS 统计)
    */
-  void updateFrameFromData(const uchar *data, int width, int height,
-                           QImage::Format format);
+  void notifyFrameRendered();
 
   /**
-   * @brief 开始测试模式 - 循环播放测试图片
-   * @param fps 帧率
+   * @brief 强制清空显示内容 (黑屏)
    */
-  void startTestMode(int fps = 10);
+  void clear();
 
   /**
-   * @brief 停止测试模式
+   * @brief 设置图像原始尺寸 (用于保持纵横比)
    */
-  void stopTestMode();
+  void setImageSize(int width, int height);
 
   /**
-   * @brief 设置缩放级别
-   * @param scale 缩放比例 (1.0 = 100%)
+   * @brief 设置当前是否正在进行视频流渲染
+   *
+   * 当正在推流时，禁止 paintEvent 强制刷黑，避免黑屏闪烁
    */
-  void setZoomLevel(float scale);
+  void setStreaming(bool streaming);
 
-  /**
-   * @brief 获取当前缩放级别
-   */
-  float zoomLevel() const { return m_zoomLevel; }
-
-  /**
-   * @brief 获取当前显示的帧
-   */
-  QImage getCurrentFrame() const {
-    QMutexLocker locker(&m_frameMutex);
-    return m_currentFrame;
-  }
+  // 保持纵横比的 sizeHint
+  QSize sizeHint() const override;
+  bool hasHeightForWidth() const override { return true; }
+  int heightForWidth(int w) const override;
 
 signals:
-  /**
-   * @brief 帧率更新信号
-   * @param fps 当前帧率
-   */
   void fpsUpdated(float fps);
-
-public slots:
-  /**
-   * @brief 设置状态栏信息
-   */
-  void setOnlineStatus(bool online);
-  void setResolutionInfo(int width, int height);
-  void setFrameCountInfo(int count);
+  void imageSizeChanged(int width, int height);
 
 protected:
-  void initializeGL() override;
-  void paintGL() override;
-  void resizeGL(int w, int h) override;
-  void wheelEvent(QWheelEvent *event) override;
-  void mousePressEvent(QMouseEvent *event) override;
-  void mouseMoveEvent(QMouseEvent *event) override;
-  void mouseReleaseEvent(QMouseEvent *event) override;
+  // 禁止 Qt 绘制，完全交给 SDK
+  QPaintEngine *paintEngine() const override { return nullptr; }
+  void resizeEvent(QResizeEvent *event) override;
+  void paintEvent(QPaintEvent *event) override;
 
 private slots:
-  void onTestTimerTimeout();
-  void updateFPS();
+  void emitFps();
 
 private:
-  void createTexture();
-  void updateTexture();
-  void generateTestImages();
-  QImage generateColorImage(int index);
+  QTimer *m_fpsEmitTimer = nullptr;        // 定期发送 FPS 信号
+  QElapsedTimer m_frameTimer;              // 测量帧间隔
+  float m_smoothFps = 0.0f;                // EMA 平滑后的 FPS
+  bool m_firstFrame = true;                // 是否第一帧
+  static constexpr float EMA_ALPHA = 0.1f; // EMA 平滑系数
 
-  // OpenGL 资源
-  GLuint m_textureId = 0;
-  bool m_textureNeedsUpdate = false;
-
-  // 当前帧
-  QImage m_currentFrame;
-  mutable QMutex m_frameMutex;
-
-  // 显示参数
-  float m_zoomLevel = 1.0f;
-  QPointF m_panOffset{0, 0};
-  QPoint m_lastMousePos;
-  bool m_isPanning = false;
-
-  // 测试模式
-  QTimer *m_testTimer = nullptr;
-  QVector<QImage> m_testImages;
-  int m_testImageIndex = 0;
-
-  // FPS 计算
-  QTimer *m_fpsTimer = nullptr;
-  int m_frameCount = 0;
-  float m_currentFps = 0.0f;
-
-  // 状态栏信息
-  bool m_isOnline = false;
-  int m_resWidth = 0;
-  int m_resHeight = 0;
-  int m_totalFrames = 0;
+  QSize m_imageSize;          // 图像原始尺寸
+  bool m_isStreaming = false; // 是否正在采集/预览
 };
 
 #endif // VIDEODISPLAYWIDGET_H

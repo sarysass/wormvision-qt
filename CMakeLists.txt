@@ -10,22 +10,17 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# 包含路径
+include_directories(src)
+
 # 查找 Qt 包
 find_package(Qt6 REQUIRED COMPONENTS 
     Widgets 
-    OpenGLWidgets 
     Sql
     Network
 )
 
-# 查找 OpenGL
-find_package(OpenGL REQUIRED)
-
-# 查找 OpenCV
-find_package(OpenCV REQUIRED)
-include_directories("C:/vcpkg/installed/x64-windows/include/opencv4")
-
-# 源文件
+# 源文件 (移除 VideoRecorder)
 set(SOURCES
     src/main.cpp
     src/mainwindow.cpp
@@ -33,14 +28,13 @@ set(SOURCES
     src/widgets/CaptureWidget.cpp
     src/widgets/ControlPanelWidget.cpp
     src/services/CameraController.cpp
-    src/services/VideoRecorder.cpp
     src/widgets/VideoLibraryWidget.cpp
     src/data/DatabaseManager.cpp
     src/utils/ThemeManager.cpp
     src/services/CloudService.cpp
 )
 
-# 头文件
+# 头文件 (移除 VideoRecorder)
 set(HEADERS
     src/mainwindow.h
     src/widgets/VideoDisplayWidget.h
@@ -48,7 +42,6 @@ set(HEADERS
     src/widgets/ControlPanelWidget.h
     src/widgets/VideoLibraryWidget.h
     src/services/CameraController.h
-    src/services/VideoRecorder.h
     src/data/DatabaseManager.h
     src/utils/ThemeManager.h
 )
@@ -68,11 +61,8 @@ add_executable(WormVision WIN32
 # 链接库
 target_link_libraries(WormVision PRIVATE
     Qt6::Widgets
-    Qt6::OpenGLWidgets
     Qt6::Sql
     Qt6::Network
-    OpenGL::GL
-    ${OpenCV_LIBS}
 )
 
 # 海康威视 SDK
@@ -86,7 +76,6 @@ if(WIN32)
     add_custom_command(TARGET WormVision POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:Qt6::Widgets>
-            $<TARGET_FILE:Qt6::OpenGLWidgets>
             $<TARGET_FILE:Qt6::Gui>
             $<TARGET_FILE:Qt6::Core>
             $<TARGET_FILE_DIR:WormVision>
