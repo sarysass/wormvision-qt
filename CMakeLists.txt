@@ -80,6 +80,14 @@ if(WIN32)
             $<TARGET_FILE:Qt6::Core>
             $<TARGET_FILE_DIR:WormVision>
     )
+
+    # Copy Hikvision SDK DLLs
+    file(GLOB HIK_DLLS "${CMAKE_SOURCE_DIR}/libs/hikvision/bin/*.dll")
+    add_custom_command(TARGET WormVision POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${HIK_DLLS}
+            $<TARGET_FILE_DIR:WormVision>
+    )
 endif()
 
 # 安装配置
