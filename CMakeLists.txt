@@ -84,3 +84,13 @@ endif()
 
 # 安装配置
 install(TARGETS WormVision DESTINATION bin)
+
+# [Post-Build] 自动拷贝 Hikvision SDK 的 DLL 到输出目录
+if(WIN32)
+    add_custom_command(TARGET WormVision POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/libs/hikvision/bin"
+        "$<TARGET_FILE_DIR:WormVision>"
+        COMMENT "Copying Hikvision Runtime DLLs to output directory..."
+    )
+endif()
