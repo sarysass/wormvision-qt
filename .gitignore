@@ -28,6 +28,9 @@ qrc_*
 *.a
 *.lib
 *.pdb
+*.ax
+*.cti
+*.manifest
 
 # Logs
 *.log
