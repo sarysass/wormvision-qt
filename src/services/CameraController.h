@@ -58,10 +58,14 @@ public:
   void setHeight(int height);
 
   // ========== 录制功能 ==========
-  bool startRecording(const QString &filePath, float fps = 23.0f,
+  // fps <= 0 时自动用相机当前的 ResultingFrameRate（修复 Phase 3 #4：原本写死 23fps）
+  bool startRecording(const QString &filePath, float fps = -1.0f,
                       int bitRateKbps = 4000);
   void stopRecording();
   bool isRecording() const { return m_isRecording; }
+
+  // 查询相机当前结果帧率（来自 SDK ResultingFrameRate）
+  float currentResultingFps() const;
 
   // ========== 抓拍功能 ==========
   enum SnapshotFormat { FORMAT_BMP = 0, FORMAT_JPEG = 1, FORMAT_PNG = 2 };
@@ -91,6 +95,13 @@ signals:
   void recordingStarted(const QString &filePath);
   void recordingStopped(const QString &filePath);
   void recordingError(const QString &message);
+  // Phase 5：录制结束时发出帧统计（成功 vs 失败），便于诊断 0 字节录制
+  // lastErrCode 最后一次 InputOneFrame 的 SDK 错误码（0 表示无失败）
+  // pixelType 录制实际使用的像素类型枚举值（转换后或原始）
+  // convertFail 仅记 ConvertPixelType 失败次数（与 inputFail 互斥）
+  void recordingStats(qint64 totalFrames, qint64 inputOk, qint64 inputFail,
+                      qint64 fileBytes, quint32 lastErrCode, quint32 pixelType,
+                      qint64 convertFail);
 
   // 抓拍信号
   void snapshotSaved(const QString &filePath);
@@ -113,6 +124,14 @@ private:
   // 录制状态
   std::atomic<bool> m_isRecording{false};
   std::string m_recordingPath;
+  // Phase 5：录制统计 + 像素转换缓冲区
+  std::atomic<qint64> m_recordInputOk{0};
+  std::atomic<qint64> m_recordInputFail{0};
+  std::atomic<qint64> m_recordConvertFail{0};
+  std::atomic<quint32> m_lastInputErrorCode{0};
+  bool m_recordingNeedsConvert = false; // 是否需要先 ConvertPixelType
+  quint32 m_recordingActualPixelType = 0; // 实际录制用的像素类型
+  std::vector<unsigned char> m_convertBuffer;
 
   // 当前分辨率与像素格式
   int m_width = 0;

@@ -14,11 +14,15 @@ set(CMAKE_AUTOUIC ON)
 include_directories(src)
 
 # 查找 Qt 包
-find_package(Qt6 REQUIRED COMPONENTS 
-    Widgets 
+find_package(Qt6 REQUIRED COMPONENTS
+    Widgets
     Sql
     Network
+    Test
 )
+
+# 启用测试
+enable_testing()
 
 # 源文件 (移除 VideoRecorder)
 set(SOURCES
@@ -31,6 +35,8 @@ set(SOURCES
     src/widgets/VideoLibraryWidget.cpp
     src/data/DatabaseManager.cpp
     src/utils/ThemeManager.cpp
+    src/utils/VideoUtils.cpp
+    src/utils/RecordingDiagnostics.cpp
     src/services/CloudService.cpp
 )
 
@@ -44,6 +50,8 @@ set(HEADERS
     src/services/CameraController.h
     src/data/DatabaseManager.h
     src/utils/ThemeManager.h
+    src/utils/VideoUtils.h
+    src/utils/RecordingDiagnostics.h
 )
 
 # 资源文件
@@ -92,6 +100,11 @@ endif()
 
 # 安装配置
 install(TARGETS WormVision DESTINATION bin)
+
+# ============================================================================
+# 测试
+# ============================================================================
+add_subdirectory(tests)
 
 # [Post-Build] 自动拷贝 Hikvision SDK 的 DLL 到输出目录
 if(WIN32)

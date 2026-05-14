@@ -101,13 +101,21 @@
 | MvProducerVIR.dll | VIR 生产器 |
 | MvLCProducer.dll | LiveCtrl 生产器 |
 
-### ✅ ThirdParty 第三方库
+### ✅ ThirdParty 第三方库（⚠️ 录制功能必需）
 
 | DLL 名称 | 用途 | 位置 |
 |---------|------|------|
-| **swscale-9.dll** | FFmpeg 缩放（视频录制） | ThirdParty/ |
-| **avutil-60.dll** | FFmpeg 工具库 | ThirdParty/ |
-| **libwinpthread-1.dll** | MinGW 线程库 | ThirdParty/ |
+| **swscale-9.dll** | FFmpeg 缩放（视频录制） | `Runtime/Win64_x64/ThirdParty/` |
+| **avutil-60.dll** | FFmpeg 工具库 | `Runtime/Win64_x64/ThirdParty/` |
+| **libwinpthread-1.dll** | MinGW 线程库 | `Runtime/Win64_x64/ThirdParty/` |
+
+> 🔴 **必须部署！** `MV_CC_StartRecord` 在运行时**动态加载**这 3 个 DLL。
+> 缺失时 `StartRecord` 返回成功但每次 `InputOneFrame` 都会返回
+> `0x8000000c (MV_E_LOAD_LIBRARY)`，导致录制 0 字节文件。
+>
+> 注意：这些 DLL 在 MVS 安装目录的 **`ThirdParty/` 子目录**里，
+> 不在 `Runtime/Win64_x64/` 顶层，部署脚本必须递归拷贝。
+> `scripts/build.ps1` 已自动处理此问题。
 
 ---
 

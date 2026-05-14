@@ -1,7 +1,11 @@
 #include "widgets/CaptureWidget.h"
+#include "data/DatabaseManager.h"
 #include "services/CameraController.h"
+#include "utils/RecordingDiagnostics.h"
+#include "utils/VideoUtils.h"
 #include "widgets/ControlPanelWidget.h"
 #include "widgets/VideoDisplayWidget.h"
+#include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -97,8 +101,6 @@ void CaptureWidget::setupUI() {
   toolLayout->addWidget(m_startRecordBtn);
   toolLayout->addWidget(m_stopRecordBtn);
 
-  toolLayout->addWidget(m_stopRecordBtn);
-
   // 缩放控制
   toolLayout->addWidget(new QLabel("|", toolbar)); // 分隔符
 
@@ -180,16 +182,7 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::resultingFrameRateReady, m_controlPanel,
           &ControlPanelWidget::setResultingFrameRate);
 
-  // ===== 视频显示尺寸同步 =====
-  connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
-          &VideoDisplayWidget::setImageSize);
-  connect(
-      m_camera, &CameraController::resolutionReady,
-      [this](int w, int h, int, int) { m_videoDisplay->setImageSize(w, h); });
-  connect(m_videoDisplay, &VideoDisplayWidget::imageSizeChanged, this,
-          [this](int, int) { this->updateVideoLayout(); });
-
-  // ===== 视频显示尺寸同步 =====
+  // ===== 视频显示尺寸同步（Phase 3：原代码复制粘贴了两遍，导致每次信号触发两次）=====
   connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
           &VideoDisplayWidget::setImageSize);
   connect(
@@ -237,7 +230,21 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::recordingStarted, this,
           [this](const QString &) { m_recordingLabel->setText("● 录制中"); });
   connect(m_camera, &CameraController::recordingStopped, this,
-          [this](const QString &) { m_recordingLabel->setText(""); });
+          [this](const QString &filePath) {
+            m_recordingLabel->setText("");
+            // Phase 4 修复 #1：录制完成后自动写 DB（原本要切到视频库手动扫描）
+            QFileInfo fi(filePath);
+            if (fi.exists()) {
+              VideoInfo info;
+              info.filename = fi.fileName();
+              info.filepath = fi.absoluteFilePath();
+              info.filesize = fi.size();
+              info.createdAt = fi.birthTime();
+              info.duration = static_cast<qint64>(
+                  VideoUtils::parseVideoDurationFromFile(info.filepath));
+              DatabaseManager::instance().upsertVideo(info);
+            }
+          });
   connect(m_camera, &CameraController::recordingError, this,
           [this](const QString &msg) {
             m_recordingLabel->setText("");
@@ -246,6 +253,34 @@ void CaptureWidget::setupConnections() {
             QMessageBox::warning(this, "录制错误", msg);
           });
 
+  // Phase 5：监听录制统计，0 字节文件给出详细诊断（包含错误码 + 像素类型）
+  connect(
+      m_camera, &CameraController::recordingStats, this,
+      [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes,
+             quint32 lastErr, quint32 pixelType, qint64 convFail) {
+        qDebug() << "录制 stats: total=" << total << " ok=" << ok
+                 << " inputFail=" << fail << " convFail=" << convFail
+                 << " bytes=" << bytes << " lastErr=0x"
+                 << QString::number(lastErr, 16);
+        if (bytes == 0 && total > 0) {
+          QString errHex = QString("0x%1").arg(lastErr, 8, 16, QChar('0'));
+          QString pixelName = RecordingDiagnostics::pixelTypeName(pixelType);
+          QMessageBox::warning(
+              this, "录制问题",
+              QString("文件 0 字节。\n\n"
+                      "帧统计：grab=%1, ok=%2, inputFail=%3, convFail=%4\n"
+                      "录制像素类型：%5\n"
+                      "最后 SDK 错误码：%6\n\n"
+                      "请把这个对话框截图发回去诊断。")
+                  .arg(total)
+                  .arg(ok)
+                  .arg(fail)
+                  .arg(convFail)
+                  .arg(pixelName)
+                  .arg(errHex));
+        }
+      });
+
   // ===== VideoDisplayWidget FPS 更新 =====
   connect(m_videoDisplay, &VideoDisplayWidget::fpsUpdated, this,
           &CaptureWidget::onFpsUpdated);
@@ -253,9 +288,8 @@ void CaptureWidget::setupConnections() {
   // 初始刷新设备列表
   onRefreshDevicesClicked();
 
+  // Phase 3：原代码 connect 了两遍，导致 1s 计时器实际跑 2 次
   m_recordTimer = new QTimer(this);
-  connect(m_recordTimer, &QTimer::timeout, this,
-          &CaptureWidget::onRecordTimerTimeout);
   connect(m_recordTimer, &QTimer::timeout, this,
           &CaptureWidget::onRecordTimerTimeout);
 
@@ -453,7 +487,8 @@ void CaptureWidget::onStartRecordingClicked() {
   QString filename = QString("%1_%2.avi").arg(taskName, timestamp);
   QString filePath = QDir(dirPath).absoluteFilePath(filename);
 
-  if (m_camera->startRecording(filePath, 23.0f, 4000)) {
+  // Phase 3 修复 #4：fps 不再写死，传 -1 让 CameraController 用真实 ResultingFrameRate
+  if (m_camera->startRecording(filePath, -1.0f, 4000)) {
     m_startRecordBtn->setEnabled(false);
     m_stopRecordBtn->setEnabled(true);
     m_recordStartTime = QDateTime::currentDateTime();

@@ -33,7 +33,10 @@ public:
   void close();
 
   // Video CRUD
+  // 返回新插入记录的 id；如果 filepath 已存在（UNIQUE 冲突）返回 -1（静默）；真错误返回 -2
   int insertVideo(const VideoInfo &video);
+  // 不存在则插入，存在则更新 duration/filesize。原子操作，返回是否成功。
+  bool upsertVideo(const VideoInfo &video);
   VideoInfo getVideoById(int id);
   QVector<VideoInfo> getAllVideos();
   bool updateVideo(int id, const VideoInfo &updates);
