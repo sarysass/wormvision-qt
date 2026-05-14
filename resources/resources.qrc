@@ -3,5 +3,6 @@
     <qresource prefix="/">
         <file>styles/dark.qss</file>
         <file>styles/light.qss</file>
+        <file>icons/wormvision.png</file>
     </qresource>
 </RCC>

@@ -1,8 +1,9 @@
-﻿#include "data/DatabaseManager.h"
+#include "data/DatabaseManager.h"
 #include "mainwindow.h"
 #include "utils/AppPaths.h"
 #include "utils/ThemeManager.h"
 #include <QApplication>
+#include <QIcon>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -47,6 +48,7 @@ int main(int argc, char *argv[]) {
   QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath());
 
   QApplication app(argc, argv);
+  app.setWindowIcon(QIcon(":/icons/wormvision.png"));
 
   // Phase 5：装文件 logger（必须在 QCoreApplication 之后，因为用 applicationDirPath）
   qInstallMessageHandler(messageHandler);

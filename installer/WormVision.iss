@@ -28,6 +28,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\resources\icons\wormvision.ico
 ; 安装时检查 MVS SDK 是否在目标机器（缺则给提示，但不阻断）
 SetupMutex=WormVisionSetupMutex
 

@@ -63,6 +63,11 @@ set(RESOURCES
     resources/resources.qrc
 )
 
+# Windows 平台：将 .ico 嵌入到 exe 的资源段，让资源管理器/任务栏/快捷方式显示图标
+if(WIN32)
+    list(APPEND RESOURCES resources/wormvision.rc)
+endif()
+
 # 创建可执行文件
 add_executable(WormVision WIN32
     ${SOURCES}
