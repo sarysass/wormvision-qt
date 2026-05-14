@@ -58,10 +58,14 @@ public:
   void setHeight(int height);
 
   // ========== 录制功能 ==========
-  bool startRecording(const QString &filePath, float fps = 23.0f,
+  // fps <= 0 时自动用相机当前的 ResultingFrameRate（修复 Phase 3 #4：原本写死 23fps）
+  bool startRecording(const QString &filePath, float fps = -1.0f,
                       int bitRateKbps = 4000);
   void stopRecording();
   bool isRecording() const { return m_isRecording; }
+
+  // 查询相机当前结果帧率（来自 SDK ResultingFrameRate）
+  float currentResultingFps() const;
 
   // ========== 抓拍功能 ==========
   enum SnapshotFormat { FORMAT_BMP = 0, FORMAT_JPEG = 1, FORMAT_PNG = 2 };

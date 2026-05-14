@@ -97,8 +97,6 @@ void CaptureWidget::setupUI() {
   toolLayout->addWidget(m_startRecordBtn);
   toolLayout->addWidget(m_stopRecordBtn);
 
-  toolLayout->addWidget(m_stopRecordBtn);
-
   // 缩放控制
   toolLayout->addWidget(new QLabel("|", toolbar)); // 分隔符
 
@@ -180,16 +178,7 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::resultingFrameRateReady, m_controlPanel,
           &ControlPanelWidget::setResultingFrameRate);
 
-  // ===== 视频显示尺寸同步 =====
-  connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
-          &VideoDisplayWidget::setImageSize);
-  connect(
-      m_camera, &CameraController::resolutionReady,
-      [this](int w, int h, int, int) { m_videoDisplay->setImageSize(w, h); });
-  connect(m_videoDisplay, &VideoDisplayWidget::imageSizeChanged, this,
-          [this](int, int) { this->updateVideoLayout(); });
-
-  // ===== 视频显示尺寸同步 =====
+  // ===== 视频显示尺寸同步（Phase 3：原代码复制粘贴了两遍，导致每次信号触发两次）=====
   connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
           &VideoDisplayWidget::setImageSize);
   connect(
@@ -253,9 +242,8 @@ void CaptureWidget::setupConnections() {
   // 初始刷新设备列表
   onRefreshDevicesClicked();
 
+  // Phase 3：原代码 connect 了两遍，导致 1s 计时器实际跑 2 次
   m_recordTimer = new QTimer(this);
-  connect(m_recordTimer, &QTimer::timeout, this,
-          &CaptureWidget::onRecordTimerTimeout);
   connect(m_recordTimer, &QTimer::timeout, this,
           &CaptureWidget::onRecordTimerTimeout);
 
@@ -453,7 +441,8 @@ void CaptureWidget::onStartRecordingClicked() {
   QString filename = QString("%1_%2.avi").arg(taskName, timestamp);
   QString filePath = QDir(dirPath).absoluteFilePath(filename);
 
-  if (m_camera->startRecording(filePath, 23.0f, 4000)) {
+  // Phase 3 修复 #4：fps 不再写死，传 -1 让 CameraController 用真实 ResultingFrameRate
+  if (m_camera->startRecording(filePath, -1.0f, 4000)) {
     m_startRecordBtn->setEnabled(false);
     m_stopRecordBtn->setEnabled(true);
     m_recordStartTime = QDateTime::currentDateTime();

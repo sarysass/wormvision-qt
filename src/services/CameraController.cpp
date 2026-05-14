@@ -35,15 +35,17 @@ QList<CameraController::DeviceInfo> CameraController::enumerateDevices() {
     info.index = static_cast<int>(i);
     info.deviceType = pDev->nTLayerType;
 
+    // Phase 3 修复 #5：原代码用 fromLatin1，设备名/序列号含中文（用户自定义名）会乱码。
+    // 海康 SDK 在 Windows 上字段是本地编码（GBK），用 fromLocal8Bit 解码。
     if (pDev->nTLayerType == MV_GIGE_DEVICE) {
-      info.name = QString::fromLatin1(reinterpret_cast<const char *>(
+      info.name = QString::fromLocal8Bit(reinterpret_cast<const char *>(
           pDev->SpecialInfo.stGigEInfo.chModelName));
-      info.serialNumber = QString::fromLatin1(reinterpret_cast<const char *>(
+      info.serialNumber = QString::fromLocal8Bit(reinterpret_cast<const char *>(
           pDev->SpecialInfo.stGigEInfo.chSerialNumber));
     } else if (pDev->nTLayerType == MV_USB_DEVICE) {
-      info.name = QString::fromLatin1(reinterpret_cast<const char *>(
+      info.name = QString::fromLocal8Bit(reinterpret_cast<const char *>(
           pDev->SpecialInfo.stUsb3VInfo.chModelName));
-      info.serialNumber = QString::fromLatin1(reinterpret_cast<const char *>(
+      info.serialNumber = QString::fromLocal8Bit(reinterpret_cast<const char *>(
           pDev->SpecialInfo.stUsb3VInfo.chSerialNumber));
     }
     devices.append(info);
@@ -408,6 +410,16 @@ bool CameraController::startRecording(const QString &filePath, float fps,
     return false;
   }
 
+  // Phase 3 修复 #4：原代码硬编码 23fps，导致 60fps 相机录出的 AVI 严重失真。
+  // fps <= 0 时从 SDK 读 ResultingFrameRate 作为真实帧率。
+  if (fps <= 0.0f) {
+    fps = currentResultingFps();
+    if (fps <= 0.0f) {
+      fps = 30.0f; // 兜底
+    }
+    qDebug() << "录制 fps 自动取自相机:" << fps;
+  }
+
   MV_CC_RECORD_PARAM recordParam;
   memset(&recordParam, 0, sizeof(MV_CC_RECORD_PARAM));
   recordParam.enRecordFmtType = MV_FormatType_AVI;
@@ -437,6 +449,16 @@ bool CameraController::startRecording(const QString &filePath, float fps,
   m_isRecording = true;
   emit recordingStarted(filePath);
   return true;
+}
+
+float CameraController::currentResultingFps() const {
+  if (!m_isOpen)
+    return 0.0f;
+  MVCC_FLOATVALUE v;
+  if (MV_OK == MV_CC_GetFloatValue(m_cameraHandle, "ResultingFrameRate", &v)) {
+    return v.fCurValue;
+  }
+  return 0.0f;
 }
 
 void CameraController::stopRecording() {
