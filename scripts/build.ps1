@@ -96,7 +96,12 @@ if ($LASTEXITCODE -eq 0) {
 
     if (Test-Path $windeployqt) {
         Write-Host "Deploying Qt dependencies..."
-        & $windeployqt $exePath --no-translations --no-opengl-sw
+        # windeployqt 即使全部部署成功也会在 stderr 报 translation warning，
+        # 这里临时关掉 errorAction stop 否则后续步骤会被跳过
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $windeployqt $exePath --no-translations --no-opengl-sw 2>&1 | Out-Host
+        $ErrorActionPreference = $oldEAP
 
         # qsqlite.dll plugin needs sqlite3.dll next to the exe
         $sqliteDll = "C:\vcpkg\installed\x64-windows\bin\sqlite3.dll"
