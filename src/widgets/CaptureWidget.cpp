@@ -1,5 +1,6 @@
 #include "widgets/CaptureWidget.h"
 #include "data/DatabaseManager.h"
+#include "data/VideoLibraryService.h"
 #include "services/CameraController.h"
 #include "utils/RecordingDiagnostics.h"
 #include "utils/VideoUtils.h"
@@ -232,18 +233,9 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::recordingStopped, this,
           [this](const QString &filePath) {
             m_recordingLabel->setText("");
-            // Phase 4 修复 #1：录制完成后自动写 DB（原本要切到视频库手动扫描）
-            QFileInfo fi(filePath);
-            if (fi.exists()) {
-              VideoInfo info;
-              info.filename = fi.fileName();
-              info.filepath = fi.absoluteFilePath();
-              info.filesize = fi.size();
-              info.createdAt = fi.birthTime();
-              info.duration = static_cast<qint64>(
-                  VideoUtils::parseVideoDurationFromFile(info.filepath));
-              DatabaseManager::instance().upsertVideo(info);
-            }
+            // Phase 4/6：委托给 VideoLibraryService（有单元测试覆盖）
+            VideoLibraryService::addRecording(filePath,
+                                              DatabaseManager::instance());
           });
   connect(m_camera, &CameraController::recordingError, this,
           [this](const QString &msg) {

@@ -44,3 +44,13 @@ wormvision_add_test(test_recording_diagnostics
         test_recording_diagnostics.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/RecordingDiagnostics.cpp
 )
+
+# === Phase 6: VideoLibraryService 集成测试（防 Phase 4/5 bug 回归）===
+wormvision_add_test(test_video_library_service
+    SOURCES
+        test_video_library_service.cpp
+        ${CMAKE_SOURCE_DIR}/src/data/VideoLibraryService.cpp
+        ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
+    LIBS Qt6::Sql
+)

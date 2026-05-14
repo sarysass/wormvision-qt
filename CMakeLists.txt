@@ -34,6 +34,7 @@ set(SOURCES
     src/services/CameraController.cpp
     src/widgets/VideoLibraryWidget.cpp
     src/data/DatabaseManager.cpp
+    src/data/VideoLibraryService.cpp
     src/utils/ThemeManager.cpp
     src/utils/VideoUtils.cpp
     src/utils/RecordingDiagnostics.cpp
@@ -49,6 +50,7 @@ set(HEADERS
     src/widgets/VideoLibraryWidget.h
     src/services/CameraController.h
     src/data/DatabaseManager.h
+    src/data/VideoLibraryService.h
     src/utils/ThemeManager.h
     src/utils/VideoUtils.h
     src/utils/RecordingDiagnostics.h
