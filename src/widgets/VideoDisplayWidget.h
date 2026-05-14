@@ -55,6 +55,9 @@ signals:
   void fpsUpdated(float fps);
   void imageSizeChanged(int width, int height);
   void wheelEventTriggered(QWheelEvent *event);
+  // 左键拖动画面时发出：dx/dy 是相对上一帧光标的位移（像素）
+  // 由 CaptureWidget 接住 → 调 ScrollArea 的 scrollBar 实现 pan
+  void panDelta(int dx, int dy);
 
 protected:
   // 禁止 Qt 绘制，完全交给 SDK
@@ -62,6 +65,11 @@ protected:
   void resizeEvent(QResizeEvent *event) override;
   void paintEvent(QPaintEvent *event) override;
   void wheelEvent(QWheelEvent *event) override;
+  void mousePressEvent(QMouseEvent *event) override;
+  void mouseMoveEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
+  void enterEvent(QEnterEvent *event) override;
+  void leaveEvent(QEvent *event) override;
 
 private slots:
   void emitFps();
@@ -75,6 +83,10 @@ private:
 
   QSize m_imageSize;          // 图像原始尺寸
   bool m_isStreaming = false; // 是否正在采集/预览
+
+  // 拖动 pan 状态
+  bool m_isPanning = false;
+  QPoint m_lastPanPos; // 全局坐标，避免 widget 内部坐标因 scroll 抖动
 };
 
 #endif // VIDEODISPLAYWIDGET_H

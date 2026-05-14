@@ -1,5 +1,7 @@
 ﻿#include "VideoDisplayWidget.h"
 #include <QDebug>
+#include <QEnterEvent>
+#include <QMouseEvent>
 #include <QPalette>
 #include <QWheelEvent>
 
@@ -144,4 +146,50 @@ void VideoDisplayWidget::paintEvent(QPaintEvent *event) {
 
 void VideoDisplayWidget::wheelEvent(QWheelEvent *event) {
   emit wheelEventTriggered(event);
+}
+
+// 拖动 pan：标准图片查看器交互（按下变 ClosedHand，拖动时计算 delta）
+void VideoDisplayWidget::mousePressEvent(QMouseEvent *event) {
+  if (event->button() == Qt::LeftButton) {
+    m_isPanning = true;
+    m_lastPanPos = event->globalPosition().toPoint();
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
+    return;
+  }
+  QWidget::mousePressEvent(event);
+}
+
+void VideoDisplayWidget::mouseMoveEvent(QMouseEvent *event) {
+  if (m_isPanning) {
+    const QPoint cur = event->globalPosition().toPoint();
+    const QPoint delta = cur - m_lastPanPos;
+    m_lastPanPos = cur;
+    emit panDelta(delta.x(), delta.y());
+    event->accept();
+    return;
+  }
+  QWidget::mouseMoveEvent(event);
+}
+
+void VideoDisplayWidget::mouseReleaseEvent(QMouseEvent *event) {
+  if (event->button() == Qt::LeftButton && m_isPanning) {
+    m_isPanning = false;
+    setCursor(Qt::OpenHandCursor);
+    event->accept();
+    return;
+  }
+  QWidget::mouseReleaseEvent(event);
+}
+
+void VideoDisplayWidget::enterEvent(QEnterEvent *event) {
+  setCursor(Qt::OpenHandCursor); // 提示可拖
+  QWidget::enterEvent(event);
+}
+
+void VideoDisplayWidget::leaveEvent(QEvent *event) {
+  if (!m_isPanning) {
+    unsetCursor();
+  }
+  QWidget::leaveEvent(event);
 }

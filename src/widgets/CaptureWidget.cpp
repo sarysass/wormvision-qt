@@ -1,4 +1,4 @@
-#include "widgets/CaptureWidget.h"
+﻿#include "widgets/CaptureWidget.h"
 #include "data/DatabaseManager.h"
 #include "data/VideoLibraryService.h"
 #include "services/CameraController.h"
@@ -8,6 +8,7 @@
 #include "widgets/ControlPanelWidget.h"
 #include "widgets/VideoDisplayWidget.h"
 #include <QFileInfo>
+#include <QScrollBar>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -304,6 +305,8 @@ void CaptureWidget::setupConnections() {
           &CaptureWidget::onFitWindowClicked);
   connect(m_videoDisplay, &VideoDisplayWidget::wheelEventTriggered, this,
           &CaptureWidget::onVideoWheelEvent);
+  connect(m_videoDisplay, &VideoDisplayWidget::panDelta, this,
+          &CaptureWidget::onVideoPanDelta);
 }
 
 // ============================================================================
@@ -334,6 +337,18 @@ void CaptureWidget::onVideoWheelEvent(QWheelEvent *event) {
   } else {
     onZoomOutClicked();
   }
+}
+
+void CaptureWidget::onVideoPanDelta(int dx, int dy) {
+  // 鼠标左键拖动画面 = 朝鼠标方向移动内容 = 反方向移动 viewport（scrollBar 减 delta）
+  if (!m_scrollArea)
+    return;
+  auto *hbar = m_scrollArea->horizontalScrollBar();
+  auto *vbar = m_scrollArea->verticalScrollBar();
+  if (hbar)
+    hbar->setValue(hbar->value() - dx);
+  if (vbar)
+    vbar->setValue(vbar->value() - dy);
 }
 
 // ============================================================================

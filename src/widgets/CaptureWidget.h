@@ -1,4 +1,4 @@
-#ifndef CAPTUREWIDGET_H
+﻿#ifndef CAPTUREWIDGET_H
 #define CAPTUREWIDGET_H
 
 #include <QScrollArea>
@@ -50,6 +50,7 @@ private slots:
   void onZoomOutClicked();
   void onFitWindowClicked();
   void onVideoWheelEvent(QWheelEvent *event);
+  void onVideoPanDelta(int dx, int dy);
 
 protected:
   void resizeEvent(QResizeEvent *event) override;
