@@ -1,4 +1,4 @@
-﻿#ifndef CAPTUREWIDGET_H
+#ifndef CAPTUREWIDGET_H
 #define CAPTUREWIDGET_H
 
 #include <QScrollArea>
@@ -52,7 +52,6 @@ private slots:
   void onVideoWheelEvent(QWheelEvent *event);
 
 protected:
-  bool eventFilter(QObject *watched, QEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
   void showEvent(QShowEvent *event) override;
   void hideEvent(QHideEvent *event) override;

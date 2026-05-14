@@ -18,7 +18,9 @@ cmake --build build --config Release
 .\build\WormVision.exe
 ```
 
-**Build Configuration**: CMake 3.20+, Ninja generator, vcpkg toolchain at `C:/vcpkg/scripts/buildsystems/vcpkg.cmake`, C++17, Qt 6.8, Release build only.
+**Build Configuration**: CMake 3.20+, Ninja generator, vcpkg toolchain at `C:/vcpkg/scripts/buildsystems/vcpkg.cmake`, C++17, Qt 6.x (实际 vcpkg 装 6.10), Release build only.
+
+`build.ps1` 包含完整流程：自动从 MVS 安装目录同步 SDK DLL（含 ThirdParty）→ 加载 VS 环境 → configure → build → windeployqt → 拷 sqlite3.dll。新机器 git clone 后直接跑 `build.ps1` 就能完整产出。
 
 ## Architecture Overview
 
@@ -26,12 +28,23 @@ WormVision-Qt is a high-performance industrial camera application using Hikvisio
 
 ### Core Components
 
-**CameraController** ([src/services/CameraController.h](src/services/CameraController.h)) - Singleton
+**CameraController** ([src/services/CameraController.h](src/services/CameraController.h)) - QObject（普通实例，不是单例；每个 CaptureWidget 创建一个）
 - Wraps Hikvision MVS SDK for device enumeration, connection, and parameter control
 - Runs camera grab loop on a worker thread (`m_grabThread`)
-- Uses zero-copy rendering: `MV_CC_DisplayOneFrameEx` renders directly to window handle via `VideoDisplayWidget`
+- Uses zero-copy rendering: `MV_CC_DisplayOneFrameEx2` renders directly to window handle via `VideoDisplayWidget`
+- 录制时不支持的像素类型（如 Bayer）自动走 `MV_CC_ConvertPixelTypeEx` 转 BGR8
+- 录制路径保留 `std::string m_recordingPath`（GBK，给 SDK）+ `QString m_recordingPathQt`（给 Qt，避免编码丢失）
+- 录制 stop 后用 `QTimer` 轮询文件大小直到 > 0（SDK 异步 flush AVI 索引）
 - All SDK error codes logged in hex format (`0x%1`)
 - Critical: Never block UI thread - all camera operations are async or worker-threaded
+
+**VideoLibraryService** ([src/data/VideoLibraryService.h](src/data/VideoLibraryService.h)) - namespace
+- 业务逻辑层，UI 不感兴趣的事情都在这里：`addRecording`、`pruneOrphans`
+- 有完整单元测试覆盖
+
+**AppPaths** ([src/utils/AppPaths.h](src/utils/AppPaths.h)) - namespace
+- 用户数据目录管理：所有 recording/snapshot/db/log 都写 `%LOCALAPPDATA%\WormLab\WormVision\`
+- 不要往 `Program Files` 写（受保护目录 + 海康 SDK C API 不走 Qt 的 VirtualStore）
 
 **VideoDisplayWidget** ([src/widgets/VideoDisplayWidget.h](src/widgets/VideoDisplayWidget.h))
 - Receives raw image data from CameraController and passes HWND to SDK for direct rendering
@@ -100,8 +113,13 @@ All camera SDK development must reference official documentation in `Development
 
 ## Testing
 
-Currently manual only. No automated testing framework configured. Test by running `.\build\WormVision.exe` and verifying:
-1. Camera connection and preview
-2. Video recording with AVI encoding
-3. Parameter range validation
-4. Database operations
+- **自动化（ctest）**：`tests/` 下 5 个 Qt Test suite，51 个 case，覆盖纯函数 + DB CRUD + service 层：
+  - `test_smoke` 1 case：框架自检
+  - `test_video_utils` 17 case：formatDuration、AVI/MP4 时长解析
+  - `test_database_manager` 13 case：CRUD、UNIQUE 冲突、upsert
+  - `test_recording_diagnostics` 10 case：像素白名单、统计格式化
+  - `test_video_library_service` 10 case：录制入库、脏数据清理、retry 场景
+
+  跑法（build 完后在 `build/` 目录）：`ctest --output-on-failure`
+
+- **手动（GUI + SDK + 硬件）**：[docs/SMOKE_TEST.md](docs/SMOKE_TEST.md)，发版前接相机走一遍 12 大项

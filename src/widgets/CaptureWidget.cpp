@@ -1,4 +1,4 @@
-﻿#include "widgets/CaptureWidget.h"
+#include "widgets/CaptureWidget.h"
 #include "data/DatabaseManager.h"
 #include "data/VideoLibraryService.h"
 #include "services/CameraController.h"
@@ -546,16 +546,6 @@ void CaptureWidget::updateVideoLayout() {
 
   // 设置 VideoDisplayWidget 的固定大小，触发 ScrollArea 的滚动条
   m_videoDisplay->setFixedSize(targetSize);
-}
-
-bool CaptureWidget::eventFilter(QObject *watched, QEvent *event) {
-  // 监听 ScrollArea 大小变化以在自适应模式下更新布局
-  /* if (watched == m_scrollArea && event->type() == QEvent::Resize) {
-      if (m_currentZoom < 0) {
-            updateVideoLayout();
-      }
-  } */
-  return QWidget::eventFilter(watched, event);
 }
 
 void CaptureWidget::resizeEvent(QResizeEvent *event) {
