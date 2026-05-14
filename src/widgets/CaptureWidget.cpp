@@ -578,6 +578,11 @@ void CaptureWidget::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
   if (m_videoDisplay) {
     m_videoDisplay->show(); // Show native window
+    // 关键修复：从视频库切回来时，hideEvent 把 streaming 设成了 false，
+    // 这里要恢复，否则 resize（缩放）走 clear() 涂黑分支造成闪烁
+    if (m_isPreviewActive) {
+      m_videoDisplay->setStreaming(true);
+    }
   }
   if (m_camera && m_videoDisplay) {
     m_camera->setDisplayHandle(m_videoDisplay->getNativeHandle());
