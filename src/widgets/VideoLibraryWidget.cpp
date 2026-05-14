@@ -1,6 +1,7 @@
 #include "VideoLibraryWidget.h"
 #include "../data/DatabaseManager.h"
 #include "../services/CloudService.h"
+#include "../utils/VideoUtils.h"
 #include <QAction>
 #include <QCoreApplication>
 #include <QDebug>
@@ -205,80 +206,17 @@ void VideoLibraryWidget::refreshLibrary() {
   m_statusLabel->setText(QString("共加载 %1 个视频").arg(videos.size()));
 }
 
+// Phase 1 重构：格式化和解析全部委托给 VideoUtils（已有单元测试覆盖）
 QString VideoLibraryWidget::formatDuration(double seconds) {
-  if (seconds <= 0)
-    return "--:--";
-  int h = static_cast<int>(seconds) / 3600;
-  int m = (static_cast<int>(seconds) % 3600) / 60;
-  int s = static_cast<int>(seconds) % 60;
-  if (h > 0) {
-    return QString("%1:%2:%3")
-        .arg(h)
-        .arg(m, 2, 10, QChar('0'))
-        .arg(s, 2, 10, QChar('0'));
-  }
-  return QString("%1:%2").arg(m).arg(s, 2, 10, QChar('0'));
+  return VideoUtils::formatDuration(seconds);
 }
 
 QString VideoLibraryWidget::formatFileSize(qint64 bytes) {
-  if (bytes < 1024)
-    return QString("%1 B").arg(bytes);
-  if (bytes < 1024 * 1024)
-    return QString("%1 KB").arg(bytes / 1024.0, 0, 'f', 1);
-  if (bytes < 1024 * 1024 * 1024)
-    return QString("%1 MB").arg(bytes / (1024.0 * 1024), 0, 'f', 2);
-  return QString("%1 GB").arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 2);
+  return VideoUtils::formatFileSize(bytes);
 }
 
 double VideoLibraryWidget::getVideoDuration(const QString &filepath) {
-  // 直接解析 AVI 文件头获取时长
-  // AVI 结构: RIFF -> AVI -> hdrl -> avih (包含 MicroSecPerFrame 和
-  // TotalFrames)
-
-  QFile file(filepath);
-  if (!file.open(QIODevice::ReadOnly)) {
-    return 0.0;
-  }
-
-  // 读取文件头 (256 字节足够包含 avih 块)
-  QByteArray header = file.read(256);
-  file.close();
-
-  if (header.size() < 256) {
-    return 0.0;
-  }
-
-  // 验证 RIFF 和 AVI 签名
-  if (header.mid(0, 4) != "RIFF" || header.mid(8, 4) != "AVI ") {
-    return 0.0;
-  }
-
-  // 查找 avih 块 (通常在偏移 32 处)
-  int avihPos = header.indexOf("avih");
-  if (avihPos < 0 || avihPos + 56 > header.size()) {
-    return 0.0;
-  }
-
-  // avih 结构 (偏移从 avih 标签后的 4 字节大小开始):
-  // +0: dwMicroSecPerFrame (4 bytes)
-  // +4: dwMaxBytesPerSec (4 bytes)
-  // +8: dwPaddingGranularity (4 bytes)
-  // +12: dwFlags (4 bytes)
-  // +16: dwTotalFrames (4 bytes)
-
-  const char *data = header.constData() + avihPos + 8; // 跳过 "avih" 和 size
-
-  quint32 microSecPerFrame = *reinterpret_cast<const quint32 *>(data);
-  quint32 totalFrames = *reinterpret_cast<const quint32 *>(data + 16);
-
-  if (microSecPerFrame == 0 || totalFrames == 0) {
-    return 0.0;
-  }
-
-  // 计算时长: 总帧数 * 每帧微秒 / 1,000,000
-  double duration =
-      static_cast<double>(totalFrames) * microSecPerFrame / 1000000.0;
-  return duration;
+  return VideoUtils::parseVideoDurationFromFile(filepath);
 }
 
 void VideoLibraryWidget::onRefreshClicked() {

@@ -22,3 +22,10 @@ endfunction()
 wormvision_add_test(test_smoke
     SOURCES test_smoke.cpp
 )
+
+# === Phase 1: VideoUtils 单元测试 ===
+wormvision_add_test(test_video_utils
+    SOURCES
+        test_video_utils.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
+)

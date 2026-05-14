@@ -35,6 +35,7 @@ set(SOURCES
     src/widgets/VideoLibraryWidget.cpp
     src/data/DatabaseManager.cpp
     src/utils/ThemeManager.cpp
+    src/utils/VideoUtils.cpp
     src/services/CloudService.cpp
 )
 
@@ -48,6 +49,7 @@ set(HEADERS
     src/services/CameraController.h
     src/data/DatabaseManager.h
     src/utils/ThemeManager.h
+    src/utils/VideoUtils.h
 )
 
 # 资源文件
