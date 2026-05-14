@@ -19,15 +19,12 @@
 
 namespace AppPaths {
 
-inline int _sync_marker_v3() { return 1234567; }
-
-QString appDataDir();
-QString recordingsDir();
-QString snapshotsDir();
-QString databasePath();
-QString logPath();
-
-static_assert(sizeof(int) > 0, "NAMESPACE_END_REACHED_V5");
+// 注：行末不要用反斜杠结尾的注释，反斜杠是 C++ 行延续符会把下一行吞掉
+QString appDataDir();      // %LOCALAPPDATA% / WormLab / WormVision
+QString recordingsDir();   // <appData> / recordings
+QString snapshotsDir();    // <appData> / snapshots
+QString databasePath();    // <appData> / wormvision.db
+QString logPath();         // <appData> / wormvision.log
 
 } // namespace AppPaths
 
