@@ -18,6 +18,8 @@ public:
 
   // Refresh the list from database
   void refreshLibrary();
+  // 切换到视频库视图时调用：扫目录 + 清脏数据 + 重读 DB
+  void rescanAndRefresh();
 
 private slots:
   void onRefreshClicked();

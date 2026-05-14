@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
 
   // 创建主窗口
   MainWindow mainWindow;
-  mainWindow.setWindowTitle("WormVision - 工业相机采集系统");
+  mainWindow.setWindowTitle("WormVision - 线虫拍摄系统");
   mainWindow.resize(1280, 720);
   mainWindow.show();
 

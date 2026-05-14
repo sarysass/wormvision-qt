@@ -210,6 +210,10 @@ double VideoLibraryWidget::getVideoDuration(const QString &filepath) {
 }
 
 void VideoLibraryWidget::onRefreshClicked() {
+  rescanAndRefresh();
+}
+
+void VideoLibraryWidget::rescanAndRefresh() {
   scanVideoFolder();
   refreshLibrary();
 }

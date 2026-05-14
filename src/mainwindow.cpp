@@ -68,8 +68,9 @@ void MainWindow::showLibraryView() {
   m_captureAction->setChecked(false);
   m_libraryAction->setChecked(true);
 
-  // Refresh library when showing
-  m_libraryWidget->refreshLibrary();
+  // 每次切到视频库都重扫目录 + 重读 DB（兜底：即使 addRecording 因为 SDK flush
+  // 时序失败，磁盘上的真文件也会被 scanVideoFolder 拾起来）
+  m_libraryWidget->rescanAndRefresh();
 }
 
 void MainWindow::toggleTheme() {

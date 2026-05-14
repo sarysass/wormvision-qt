@@ -105,11 +105,11 @@ int VideoDisplayWidget::heightForWidth(int w) const {
 
 void VideoDisplayWidget::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
-  // 调整大小时强制刷黑，避免白屏闪烁
-  // 但如果在播放视频，不要刷黑，否则会闪烁
-  if (!m_isStreaming) {
-    clear();
-  }
+  // 修复缩放闪烁：streaming 时也要刷一下背景。
+  // 因为 paintEngine 是 nullptr，Qt 不会清新出现的区域，
+  // 在 SDK 下一帧到达前（约 43ms@23fps）会瞬时露出未定义像素，
+  // 看起来就是闪烁。clear() 涂背景色后 SDK 下一帧会无缝覆盖。
+  clear();
 }
 
 void VideoDisplayWidget::paintEvent(QPaintEvent *event) {

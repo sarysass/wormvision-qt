@@ -231,11 +231,10 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::recordingStarted, this,
           [this](const QString &) { m_recordingLabel->setText("● 录制中"); });
   connect(m_camera, &CameraController::recordingStopped, this,
-          [this](const QString &filePath) {
+          [this](const QString & /*filePath*/) {
+            // 立即给 UI 反馈，但不在这里入库——SDK 此刻还在 flush AVI 索引，
+            // 入库逻辑移到 recordingStats（1.2s 后触发，那时文件大小才稳定）
             m_recordingLabel->setText("");
-            // Phase 4/6：委托给 VideoLibraryService（有单元测试覆盖）
-            VideoLibraryService::addRecording(filePath,
-                                              DatabaseManager::instance());
           });
   connect(m_camera, &CameraController::recordingError, this,
           [this](const QString &msg) {
@@ -245,7 +244,12 @@ void CaptureWidget::setupConnections() {
             QMessageBox::warning(this, "录制错误", msg);
           });
 
-  // Phase 5：监听录制统计，0 字节文件给出详细诊断（包含错误码 + 像素类型）
+  // 录制统计在 SDK flush 完成后 1.2 秒触发，承担两个职责：
+  //   1) bytes > 0 → 把视频入库（路径由 CameraController 记录在 m_recordingPath，
+  //      这里通过最近一次 lastSavedRecordingPath 拿到。但为了零耦合，
+  //      我们让 addRecording 接收路径——由 stats 信号附带不便，
+  //      改成：CaptureWidget 自己记下 startRecording 时的路径）
+  //   2) bytes == 0 → 弹错诊断框
   connect(
       m_camera, &CameraController::recordingStats, this,
       [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes,
@@ -254,7 +258,12 @@ void CaptureWidget::setupConnections() {
                  << " inputFail=" << fail << " convFail=" << convFail
                  << " bytes=" << bytes << " lastErr=0x"
                  << QString::number(lastErr, 16);
-        if (bytes == 0 && total > 0) {
+
+        if (bytes > 0 && !m_lastRecordingPath.isEmpty()) {
+          // 正常：入库
+          VideoLibraryService::addRecording(m_lastRecordingPath,
+                                            DatabaseManager::instance());
+        } else if (bytes == 0 && total > 0) {
           QString errHex = QString("0x%1").arg(lastErr, 8, 16, QChar('0'));
           QString pixelName = RecordingDiagnostics::pixelTypeName(pixelType);
           QMessageBox::warning(
@@ -479,6 +488,8 @@ void CaptureWidget::onStartRecordingClicked() {
   QString filename = QString("%1_%2.avi").arg(taskName, timestamp);
   QString filePath = QDir(dirPath).absoluteFilePath(filename);
 
+  // 记录路径供延迟入库使用
+  m_lastRecordingPath = filePath;
   // Phase 3 修复 #4：fps 不再写死，传 -1 让 CameraController 用真实 ResultingFrameRate
   if (m_camera->startRecording(filePath, -1.0f, 4000)) {
     m_startRecordBtn->setEnabled(false);

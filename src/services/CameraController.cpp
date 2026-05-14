@@ -3,6 +3,7 @@
 #include <MvCameraControl.h>
 #include <QDebug>
 #include <QFileInfo>
+#include <QTimer>
 #include <chrono>
 
 // ============================================================================
@@ -534,22 +535,29 @@ void CameraController::stopRecording() {
   MV_CC_StopRecord(m_cameraHandle);
   m_isRecording = false;
 
-  // Phase 5：发录制统计帮助诊断 0 字节问题
   const QString path = QString::fromStdString(m_recordingPath);
-  const qint64 fileBytes = QFileInfo(path).size();
+  // 立即给 UI 反馈（清"录制中"label 等）
+  emit recordingStopped(path);
+  qDebug() << "录制已停止，等待 SDK flush AVI 索引:" << path;
+
+  // 关键修复：MV_CC_StopRecord 返回后 SDK 仍在异步 flush AVI 头/索引/尾，
+  // 立即读 fileSize 会得到 0 字节（即使录制完全成功）。
+  // 延迟 1.2 秒后再读文件大小、发 stats、触发入库。
   const qint64 ok = m_recordInputOk.load();
   const qint64 fail = m_recordInputFail.load();
   const qint64 convFail = m_recordConvertFail.load();
   const quint32 lastErr = m_lastInputErrorCode.load();
-  qDebug() << RecordingDiagnostics::formatRecordingStats(
-                  ok + fail + convFail, ok, fail + convFail, fileBytes)
-           << "convFail=" << convFail << "lastErr=0x"
-           << QString::number(lastErr, 16);
-  emit recordingStats(ok + fail + convFail, ok, fail, fileBytes, lastErr,
-                      m_recordingActualPixelType, convFail);
-
-  emit recordingStopped(path);
-  qDebug() << "录制已停止:" << path;
+  const quint32 actualPixel = m_recordingActualPixelType;
+  QTimer::singleShot(1200, this, [this, path, ok, fail, convFail, lastErr,
+                                  actualPixel]() {
+    const qint64 fileBytes = QFileInfo(path).size();
+    qInfo() << RecordingDiagnostics::formatRecordingStats(
+                   ok + fail + convFail, ok, fail + convFail, fileBytes)
+            << "convFail=" << convFail << "lastErr=0x"
+            << QString::number(lastErr, 16);
+    emit recordingStats(ok + fail + convFail, ok, fail, fileBytes, lastErr,
+                        actualPixel, convFail);
+  });
 }
 
 // ============================================================================
