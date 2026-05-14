@@ -1,7 +1,10 @@
 #include "widgets/CaptureWidget.h"
+#include "data/DatabaseManager.h"
 #include "services/CameraController.h"
+#include "utils/VideoUtils.h"
 #include "widgets/ControlPanelWidget.h"
 #include "widgets/VideoDisplayWidget.h"
+#include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -226,7 +229,21 @@ void CaptureWidget::setupConnections() {
   connect(m_camera, &CameraController::recordingStarted, this,
           [this](const QString &) { m_recordingLabel->setText("● 录制中"); });
   connect(m_camera, &CameraController::recordingStopped, this,
-          [this](const QString &) { m_recordingLabel->setText(""); });
+          [this](const QString &filePath) {
+            m_recordingLabel->setText("");
+            // Phase 4 修复 #1：录制完成后自动写 DB（原本要切到视频库手动扫描）
+            QFileInfo fi(filePath);
+            if (fi.exists()) {
+              VideoInfo info;
+              info.filename = fi.fileName();
+              info.filepath = fi.absoluteFilePath();
+              info.filesize = fi.size();
+              info.createdAt = fi.birthTime();
+              info.duration = static_cast<qint64>(
+                  VideoUtils::parseVideoDurationFromFile(info.filepath));
+              DatabaseManager::instance().upsertVideo(info);
+            }
+          });
   connect(m_camera, &CameraController::recordingError, this,
           [this](const QString &msg) {
             m_recordingLabel->setText("");

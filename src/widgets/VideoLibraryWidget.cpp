@@ -301,7 +301,11 @@ void VideoLibraryWidget::onDeleteAction() {
 }
 
 void VideoLibraryWidget::onUploadAction() {
-  QMessageBox::information(this, "云服务", "正在上传... (模拟)\n上传成功！");
+  // Phase 4 修复 #11：原代码弹"上传成功"会误导用户——CloudService 仍是 Mock。
+  // 明确告知功能尚未实现，避免用户以为视频已上云。
+  QMessageBox::information(this, "云服务",
+                           "云上传功能尚未实现。\n"
+                           "（CloudService 当前为 Mock，未对接真实后端）");
 }
 
 void VideoLibraryWidget::onBatchDeleteClicked() {
