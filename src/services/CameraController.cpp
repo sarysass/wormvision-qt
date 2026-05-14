@@ -1,4 +1,4 @@
-﻿#include "CameraController.h"
+#include "CameraController.h"
 #include "../utils/RecordingDiagnostics.h"
 #include <MvCameraControl.h>
 #include <QDebug>
@@ -496,9 +496,11 @@ bool CameraController::startRecording(const QString &filePath, float fps,
   recordParam.nBitRate = bitRateKbps;
   recordParam.enPixelType = recordPixelType;
 
-  // SDK 在 Windows 下通常需要本地编码 (GBK) 路径
-  // 使用 toLocal8Bit() 而不是 toStdString() (UTF-8)
+  // SDK 在 Windows 下需要本地编码 (GBK) 路径，用 toLocal8Bit()
+  // 同时保留 QString 版本，因为 QFileInfo 等 Qt 工具需要 Unicode 路径，
+  // 否则 fromStdString(GBK bytes) = fromUtf8(GBK) 会乱码，导致 stat 失败永远返回 size=0
   m_recordingPath = filePath.toLocal8Bit().constData();
+  m_recordingPathQt = filePath;
   recordParam.strFilePath = const_cast<char *>(m_recordingPath.c_str());
 
   qDebug() << "开始录制:" << filePath;
@@ -546,7 +548,7 @@ void CameraController::stopRecording() {
     MV_CC_StopRecord(m_cameraHandle);
   }
 
-  const QString path = QString::fromStdString(m_recordingPath);
+  const QString path = m_recordingPathQt;
   // 立即给 UI 反馈（清"录制中"label 等）
   emit recordingStopped(path);
   qDebug() << "录制已停止，轮询 SDK flush AVI 索引:" << path;

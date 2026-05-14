@@ -1,4 +1,4 @@
-﻿#ifndef CAMERACONTROLLER_H
+#ifndef CAMERACONTROLLER_H
 #define CAMERACONTROLLER_H
 
 #include <QList>
@@ -130,7 +130,8 @@ private:
 
   // 录制状态
   std::atomic<bool> m_isRecording{false};
-  std::string m_recordingPath;
+  std::string m_recordingPath;     // GBK bytes，给海康 SDK 的 C API 用
+  QString m_recordingPathQt;       // UTF-16，给 Qt（QFileInfo / emit signal）用
   // 互斥保护 InputOneFrame ↔ StopRecord 不能交错（避免 MV_E_CALLORDER）
   std::mutex m_recordMutex;
   // Phase 5：录制统计 + 像素转换缓冲区
