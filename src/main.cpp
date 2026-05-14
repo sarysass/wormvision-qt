@@ -1,5 +1,6 @@
-#include "data/DatabaseManager.h"
+﻿#include "data/DatabaseManager.h"
 #include "mainwindow.h"
+#include "utils/AppPaths.h"
 #include "utils/ThemeManager.h"
 #include <QApplication>
 #include <QDateTime>
@@ -17,9 +18,8 @@ static void messageHandler(QtMsgType type, const QMessageLogContext &,
   static QMutex mutex;
   QMutexLocker locker(&mutex);
   if (!logFile.isOpen()) {
-    const QString path =
-        QCoreApplication::applicationDirPath() + "/wormvision.log";
-    logFile.setFileName(path);
+    // 写到 %LOCALAPPDATA%\WormVision\wormvision.log（Program Files 受保护，普通用户写不了）
+    logFile.setFileName(AppPaths::logPath());
     logFile.open(QIODevice::Append | QIODevice::Text);
   }
   if (!logFile.isOpen())
@@ -57,9 +57,9 @@ int main(int argc, char *argv[]) {
   app.setApplicationVersion("1.0.0");
   app.setOrganizationName("WormLab");
 
-  // Phase 2 修复：DB 在启动时初始化（原本只在用户切换到"视频库" tab 才初始化，
-  // 导致录制功能从未写入 DB）
-  if (!DatabaseManager::instance().initialize("")) {
+  // Phase 2 修复：DB 在启动时初始化
+  // 路径用 %LOCALAPPDATA%\WormVision\wormvision.db（不是安装目录）
+  if (!DatabaseManager::instance().initialize(AppPaths::databasePath())) {
     qCritical() << "数据库初始化失败，继续启动但视频库功能可能不可用";
   }
 

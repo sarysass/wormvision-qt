@@ -1,4 +1,4 @@
-#include "RecordingDiagnostics.h"
+﻿#include "RecordingDiagnostics.h"
 
 namespace RecordingDiagnostics {
 

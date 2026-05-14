@@ -1,7 +1,8 @@
-#include "VideoLibraryWidget.h"
+﻿#include "VideoLibraryWidget.h"
 #include "../data/DatabaseManager.h"
 #include "../data/VideoLibraryService.h"
 #include "../services/CloudService.h"
+#include "../utils/AppPaths.h"
 #include "../utils/VideoUtils.h"
 #include <QAction>
 #include <QCoreApplication>
@@ -115,13 +116,9 @@ void VideoLibraryWidget::setupConnections() {
 }
 
 void VideoLibraryWidget::scanVideoFolder() {
-  QString videoDir = QCoreApplication::applicationDirPath() + "/recordings";
+  QString videoDir = AppPaths::recordingsDir();
   QDir dir(videoDir);
   qDebug() << "扫描视频目录:" << videoDir << "存在:" << dir.exists();
-
-  if (!dir.exists()) {
-    dir.mkpath(".");
-  }
 
   QStringList filters;
   filters << "*.mp4" << "*.avi";
@@ -219,8 +216,7 @@ void VideoLibraryWidget::rescanAndRefresh() {
 }
 
 void VideoLibraryWidget::onOpenFolderClicked() {
-  QString path = QCoreApplication::applicationDirPath() + "/recordings";
-  QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+  QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::recordingsDir()));
 }
 
 void VideoLibraryWidget::onTableDoubleClicked(int row, int column) {

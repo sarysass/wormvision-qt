@@ -38,6 +38,7 @@ set(SOURCES
     src/utils/ThemeManager.cpp
     src/utils/VideoUtils.cpp
     src/utils/RecordingDiagnostics.cpp
+    src/utils/AppPaths.cpp
     src/services/CloudService.cpp
 )
 
@@ -54,6 +55,7 @@ set(HEADERS
     src/utils/ThemeManager.h
     src/utils/VideoUtils.h
     src/utils/RecordingDiagnostics.h
+    src/utils/AppPaths.h
 )
 
 # 资源文件

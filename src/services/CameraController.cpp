@@ -1,4 +1,4 @@
-#include "CameraController.h"
+﻿#include "CameraController.h"
 #include "../utils/RecordingDiagnostics.h"
 #include <MvCameraControl.h>
 #include <QDebug>

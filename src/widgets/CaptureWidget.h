@@ -1,4 +1,4 @@
-#ifndef CAPTUREWIDGET_H
+﻿#ifndef CAPTUREWIDGET_H
 #define CAPTUREWIDGET_H
 
 #include <QScrollArea>

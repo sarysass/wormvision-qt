@@ -1,4 +1,4 @@
-#ifndef VIDEOLIBRARYSERVICE_H
+﻿#ifndef VIDEOLIBRARYSERVICE_H
 #define VIDEOLIBRARYSERVICE_H
 
 #include "DatabaseManager.h"

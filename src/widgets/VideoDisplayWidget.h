@@ -1,4 +1,4 @@
-#ifndef VIDEODISPLAYWIDGET_H
+﻿#ifndef VIDEODISPLAYWIDGET_H
 #define VIDEODISPLAYWIDGET_H
 
 #include <QElapsedTimer>

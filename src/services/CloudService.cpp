@@ -1,4 +1,4 @@
-#include "CloudService.h"
+﻿#include "CloudService.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <QTimer>

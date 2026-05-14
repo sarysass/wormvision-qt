@@ -1,4 +1,4 @@
-#ifndef THEMEMANAGER_H
+﻿#ifndef THEMEMANAGER_H
 #define THEMEMANAGER_H
 
 #include <QObject>

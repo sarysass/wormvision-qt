@@ -1,4 +1,4 @@
-#include "VideoUtils.h"
+﻿#include "VideoUtils.h"
 
 #include <QChar>
 #include <QFile>

@@ -1,4 +1,4 @@
-#ifndef CLOUDSERVICE_H
+﻿#ifndef CLOUDSERVICE_H
 #define CLOUDSERVICE_H
 
 #include <QList>

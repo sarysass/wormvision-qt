@@ -1,4 +1,4 @@
-#include "widgets/ControlPanelWidget.h"
+﻿#include "widgets/ControlPanelWidget.h"
 #include <QGridLayout>
 #include <QLabel>
 #include <QVBoxLayout>

@@ -1,4 +1,4 @@
-#include "VideoLibraryService.h"
+﻿#include "VideoLibraryService.h"
 #include "../utils/VideoUtils.h"
 #include <QDebug>
 #include <QFile>

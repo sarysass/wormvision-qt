@@ -1,4 +1,4 @@
-#ifndef CAMERACONTROLLER_H
+﻿#ifndef CAMERACONTROLLER_H
 #define CAMERACONTROLLER_H
 
 #include <QList>

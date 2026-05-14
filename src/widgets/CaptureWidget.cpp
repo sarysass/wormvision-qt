@@ -1,7 +1,8 @@
-#include "widgets/CaptureWidget.h"
+﻿#include "widgets/CaptureWidget.h"
 #include "data/DatabaseManager.h"
 #include "data/VideoLibraryService.h"
 #include "services/CameraController.h"
+#include "utils/AppPaths.h"
 #include "utils/RecordingDiagnostics.h"
 #include "utils/VideoUtils.h"
 #include "widgets/ControlPanelWidget.h"
@@ -454,16 +455,13 @@ void CaptureWidget::onCaptureSnapshotClicked() {
   if (!m_isPreviewActive)
     return;
 
-  QString dirPath = QCoreApplication::applicationDirPath() + "/snapshots";
-  QDir().mkpath(dirPath);
-
   QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
   QString taskName = m_taskInfoEdit->text().trimmed();
   if (taskName.isEmpty())
     taskName = "snapshot";
 
   QString filename = QString("%1_%2.jpg").arg(taskName, timestamp);
-  QString filePath = QDir(dirPath).absoluteFilePath(filename);
+  QString filePath = QDir(AppPaths::snapshotsDir()).absoluteFilePath(filename);
 
   m_camera->saveSnapshot(filePath, CameraController::FORMAT_JPEG, 90);
 }
@@ -472,9 +470,6 @@ void CaptureWidget::onStartRecordingClicked() {
   if (!m_isPreviewActive)
     return;
 
-  QString dirPath = QCoreApplication::applicationDirPath() + "/recordings";
-  QDir().mkpath(dirPath);
-
   QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
   QString taskName = m_taskInfoEdit->text().trimmed();
   if (taskName.isEmpty())
@@ -482,7 +477,7 @@ void CaptureWidget::onStartRecordingClicked() {
 
   // SDK 仅支持 AVI 格式
   QString filename = QString("%1_%2.avi").arg(taskName, timestamp);
-  QString filePath = QDir(dirPath).absoluteFilePath(filename);
+  QString filePath = QDir(AppPaths::recordingsDir()).absoluteFilePath(filename);
 
   // 记录路径供延迟入库使用
   m_lastRecordingPath = filePath;

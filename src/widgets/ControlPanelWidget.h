@@ -1,4 +1,4 @@
-#ifndef CONTROLPANELWIDGET_H
+﻿#ifndef CONTROLPANELWIDGET_H
 #define CONTROLPANELWIDGET_H
 
 #include <QCheckBox>

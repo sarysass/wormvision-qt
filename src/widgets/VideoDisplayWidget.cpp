@@ -1,4 +1,4 @@
-#include "VideoDisplayWidget.h"
+﻿#include "VideoDisplayWidget.h"
 #include <QDebug>
 #include <QPalette>
 #include <QWheelEvent>

@@ -1,4 +1,4 @@
-#ifndef VIDEOLIBRARYWIDGET_H
+﻿#ifndef VIDEOLIBRARYWIDGET_H
 #define VIDEOLIBRARYWIDGET_H
 
 #include <QHBoxLayout>

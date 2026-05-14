@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "widgets/CaptureWidget.h"
 #include "widgets/VideoLibraryWidget.h"
 #include <QDebug>

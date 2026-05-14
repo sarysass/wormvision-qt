@@ -1,4 +1,4 @@
-#ifndef VIDEOUTILS_H
+﻿#ifndef VIDEOUTILS_H
 #define VIDEOUTILS_H
 
 #include <QByteArray>
