@@ -124,6 +124,8 @@ private:
   // 录制状态
   std::atomic<bool> m_isRecording{false};
   std::string m_recordingPath;
+  // 互斥保护 InputOneFrame ↔ StopRecord 不能交错（避免 MV_E_CALLORDER）
+  std::mutex m_recordMutex;
   // Phase 5：录制统计 + 像素转换缓冲区
   std::atomic<qint64> m_recordInputOk{0};
   std::atomic<qint64> m_recordInputFail{0};

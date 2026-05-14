@@ -309,20 +309,17 @@ void CaptureWidget::setupConnections() {
 // 缩放逻辑
 // ============================================================================
 
-void CaptureWidget::onZoomInClicked() {
-  double newZoom = m_currentZoom + 0.01; // 1% 步进
-  if (newZoom > 5.0)
-    newZoom = 5.0;
+// 缩放步进改大：1% 太小，反复触发 resize 导致 SDK 渲染窗口反复自适应造成闪烁。
+// 5% 步进 + 滚轮按"格数"累积一次 resize，资源消耗低、视觉跳跃明显。
+static constexpr double kZoomStep = 0.05;
 
-  m_currentZoom = newZoom;
+void CaptureWidget::onZoomInClicked() {
+  m_currentZoom = qMin(5.0, (m_currentZoom < 0 ? 0.0 : m_currentZoom) + kZoomStep);
   updateVideoLayout();
 }
 
 void CaptureWidget::onZoomOutClicked() {
-  double newZoom = m_currentZoom - 0.01; // 1% 步进
-  if (newZoom < 0.01)                    // 最小 1%
-    newZoom = 0.01;
-  m_currentZoom = newZoom;
+  m_currentZoom = qMax(0.05, (m_currentZoom < 0 ? 0.0 : m_currentZoom) - kZoomStep);
   updateVideoLayout();
 }
 
@@ -332,11 +329,15 @@ void CaptureWidget::onFitWindowClicked() {
 }
 
 void CaptureWidget::onVideoWheelEvent(QWheelEvent *event) {
-  if (event->angleDelta().y() > 0) {
-    onZoomInClicked();
-  } else {
-    onZoomOutClicked();
-  }
+  // 把滚轮 delta 折算成"格数"一次性 resize，而不是每格触发一次
+  const int notches = event->angleDelta().y() / 120;
+  if (notches == 0)
+    return;
+  if (m_currentZoom < 0)
+    m_currentZoom = 1.0; // fit 模式被打破，从 100% 开始
+  m_currentZoom = qBound(
+      0.05, m_currentZoom + kZoomStep * notches, 5.0);
+  updateVideoLayout();
 }
 
 // ============================================================================

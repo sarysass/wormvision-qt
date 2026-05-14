@@ -280,6 +280,13 @@ void CameraController::grabLoop() {
       }
 
       // 录制时输入帧（Phase 5：原始 Bayer 等格式需要先转 BGR8）
+      // 加锁防止 stopRecording 在 InputOneFrame 中间执行 StopRecord，
+      // 否则会出现 MV_E_CALLORDER (0x80000003) 把 AVI 索引写坏导致 0 字节
+      std::unique_lock<std::mutex> recLock(m_recordMutex, std::defer_lock);
+      if (m_isRecording) {
+        recLock.lock();
+      }
+      // double-check：拿到锁后 stopRecording 可能已经把 isRecording 置 false
       if (m_isRecording) {
         MV_CC_INPUT_FRAME_INFO inputInfo;
         memset(&inputInfo, 0, sizeof(MV_CC_INPUT_FRAME_INFO));
@@ -532,8 +539,12 @@ void CameraController::stopRecording() {
   if (!m_isRecording)
     return;
 
-  MV_CC_StopRecord(m_cameraHandle);
-  m_isRecording = false;
+  // 关键修复：拿锁 → 置 false → StopRecord，保证 grabLoop 不会和 StopRecord 交错
+  {
+    std::lock_guard<std::mutex> lock(m_recordMutex);
+    m_isRecording = false;
+    MV_CC_StopRecord(m_cameraHandle);
+  }
 
   const QString path = QString::fromStdString(m_recordingPath);
   // 立即给 UI 反馈（清"录制中"label 等）
@@ -548,7 +559,9 @@ void CameraController::stopRecording() {
   const qint64 convFail = m_recordConvertFail.load();
   const quint32 lastErr = m_lastInputErrorCode.load();
   const quint32 actualPixel = m_recordingActualPixelType;
-  QTimer::singleShot(1200, this, [this, path, ok, fail, convFail, lastErr,
+  // 经验值：海康 GigE 5MP @ 23fps 录 10s + StopRecord flush 索引大约 1.5-2s，
+  // 给 2.5s 兜底
+  QTimer::singleShot(2500, this, [this, path, ok, fail, convFail, lastErr,
                                   actualPixel]() {
     const qint64 fileBytes = QFileInfo(path).size();
     qInfo() << RecordingDiagnostics::formatRecordingStats(
