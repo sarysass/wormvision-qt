@@ -118,11 +118,31 @@ int DatabaseManager::insertVideo(const VideoInfo &video) {
   query.bindValue(":upload_status", video.uploadStatus);
 
   if (!query.exec()) {
-    qWarning() << "插入失败:" << query.lastError().text();
-    return -1;
+    // Phase 2 修复：区分 UNIQUE 冲突 vs 真错误
+    // SQLite UNIQUE 冲突 errorCode == 19
+    QSqlError err = query.lastError();
+    if (err.nativeErrorCode() == "19" ||
+        err.text().contains("UNIQUE", Qt::CaseInsensitive)) {
+      return -1; // 冲突：静默
+    }
+    qWarning() << "插入失败:" << err.text();
+    return -2; // 真错误
   }
 
   return query.lastInsertId().toInt();
+}
+
+bool DatabaseManager::upsertVideo(const VideoInfo &video) {
+  int id = insertVideo(video);
+  if (id > 0) {
+    return true;
+  }
+  if (id == -1) {
+    // 已存在：用 path 更新 duration + filesize
+    return updateVideoMetadataByPath(video.filepath, video.duration,
+                                     video.filesize);
+  }
+  return false; // 真错误
 }
 
 VideoInfo DatabaseManager::getVideoById(int id) {

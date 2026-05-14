@@ -30,9 +30,7 @@ VideoLibraryWidget::VideoLibraryWidget(QWidget *parent) : QWidget(parent) {
   setupUI();
   setupConnections();
 
-  // Initialize DB if not already
-  DatabaseManager::instance().initialize("");
-
+  // Phase 2 重构：DB 初始化挪到 main.cpp，此处不再重复初始化
   // Initial scan
   scanVideoFolder();
   refreshLibrary();
@@ -129,38 +127,22 @@ void VideoLibraryWidget::scanVideoFolder() {
   QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files);
   qDebug() << "目录中发现" << fileList.size() << "个文件。";
 
-  int newCount = 0;
-  int updatedCount = 0;
+  int total = 0;
   for (const QFileInfo &fileInfo : fileList) {
     VideoInfo info;
     info.filename = fileInfo.fileName();
     info.filepath = fileInfo.absoluteFilePath();
     info.filesize = fileInfo.size();
     info.createdAt = fileInfo.birthTime();
-    // Read duration from video file
-    double durationSec = getVideoDuration(info.filepath);
-    info.duration = static_cast<qint64>(durationSec);
+    info.duration = static_cast<qint64>(getVideoDuration(info.filepath));
 
-    int id = DatabaseManager::instance().insertVideo(info);
-    if (id > 0) {
-      newCount++;
-      qDebug() << "插入新视频:" << info.filename << "ID:" << id
-               << "Duration:" << info.duration;
-    } else {
-      // Video already exists - update duration and filesize
-      if (DatabaseManager::instance().updateVideoMetadataByPath(
-              info.filepath, info.duration, info.filesize)) {
-        updatedCount++;
-        qDebug() << "更新元数据:" << info.filename
-                 << "Duration:" << info.duration << "Size:" << info.filesize;
-      }
+    if (DatabaseManager::instance().upsertVideo(info)) {
+      total++;
     }
   }
 
-  if (newCount > 0 || updatedCount > 0) {
-    m_statusLabel->setText(QString("扫描发现 %1 个新视频，更新 %2 个")
-                               .arg(newCount)
-                               .arg(updatedCount));
+  if (total > 0) {
+    m_statusLabel->setText(QString("扫描同步 %1 个视频").arg(total));
   }
 }
 

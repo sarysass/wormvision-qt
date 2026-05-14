@@ -29,3 +29,11 @@ wormvision_add_test(test_video_utils
         test_video_utils.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
 )
+
+# === Phase 2: DatabaseManager 单元测试 ===
+wormvision_add_test(test_database_manager
+    SOURCES
+        test_database_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
+    LIBS Qt6::Sql
+)
