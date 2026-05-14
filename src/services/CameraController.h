@@ -67,6 +67,13 @@ public:
   // 查询相机当前结果帧率（来自 SDK ResultingFrameRate）
   float currentResultingFps() const;
 
+private:
+  // SDK flush 是异步的，轮询文件大小直到 > 0 或超时再 emit stats
+  void pollFlushAndEmitStats(const QString &path, qint64 ok, qint64 fail,
+                             qint64 convFail, quint32 lastErr,
+                             quint32 actualPixel, int retriesLeft);
+public:
+
   // ========== 抓拍功能 ==========
   enum SnapshotFormat { FORMAT_BMP = 0, FORMAT_JPEG = 1, FORMAT_PNG = 2 };
   bool saveSnapshot(const QString &filePath,

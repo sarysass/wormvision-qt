@@ -105,11 +105,32 @@ int VideoDisplayWidget::heightForWidth(int w) const {
 
 void VideoDisplayWidget::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
-  // 修复缩放闪烁：streaming 时也要刷一下背景。
-  // 因为 paintEngine 是 nullptr，Qt 不会清新出现的区域，
-  // 在 SDK 下一帧到达前（约 43ms@23fps）会瞬时露出未定义像素，
-  // 看起来就是闪烁。clear() 涂背景色后 SDK 下一帧会无缝覆盖。
+#ifdef Q_OS_WIN
+  if (m_isStreaming) {
+    // SDK 直接渲染到 HWND，缩放期间 client area 新增的区域 / 拉伸时的中间状态
+    // 会出现黑色或未定义像素（D3D11 swap chain 在 Qt widget 上的已知问题，
+    // 参考 https://forum.qt.io/topic/67924/）。
+    // 解决方案：缩放瞬间把当前 client area 自己 StretchBlt 到新尺寸，
+    // 给 SDK 下一帧（约 43ms@23fps）到达前一个连续的视觉过渡。
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (hwnd) {
+      HDC hdc = GetDC(hwnd);
+      const int oldW = event->oldSize().width();
+      const int oldH = event->oldSize().height();
+      const int newW = event->size().width();
+      const int newH = event->size().height();
+      if (oldW > 0 && oldH > 0 && newW > 0 && newH > 0) {
+        SetStretchBltMode(hdc, HALFTONE);
+        StretchBlt(hdc, 0, 0, newW, newH, hdc, 0, 0, oldW, oldH, SRCCOPY);
+      }
+      ReleaseDC(hwnd, hdc);
+    }
+  } else {
+    clear();
+  }
+#else
   clear();
+#endif
 }
 
 void VideoDisplayWidget::paintEvent(QPaintEvent *event) {
