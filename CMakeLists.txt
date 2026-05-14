@@ -36,6 +36,7 @@ set(SOURCES
     src/data/DatabaseManager.cpp
     src/utils/ThemeManager.cpp
     src/utils/VideoUtils.cpp
+    src/utils/RecordingDiagnostics.cpp
     src/services/CloudService.cpp
 )
 
@@ -50,6 +51,7 @@ set(HEADERS
     src/data/DatabaseManager.h
     src/utils/ThemeManager.h
     src/utils/VideoUtils.h
+    src/utils/RecordingDiagnostics.h
 )
 
 # 资源文件

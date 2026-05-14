@@ -1,6 +1,8 @@
 #include "CameraController.h"
+#include "../utils/RecordingDiagnostics.h"
 #include <MvCameraControl.h>
 #include <QDebug>
+#include <QFileInfo>
 #include <chrono>
 
 // ============================================================================
@@ -276,16 +278,52 @@ void CameraController::grabLoop() {
         MV_CC_DisplayOneFrameEx2(m_cameraHandle, m_displayHandle, &stImage, 0);
       }
 
-      // 录制时输入帧
+      // 录制时输入帧（Phase 5：原始 Bayer 等格式需要先转 BGR8）
       if (m_isRecording) {
         MV_CC_INPUT_FRAME_INFO inputInfo;
         memset(&inputInfo, 0, sizeof(MV_CC_INPUT_FRAME_INFO));
-        inputInfo.pData = frameOut.pBufAddr;
-        inputInfo.nDataLen =
-            frameOut.stFrameInfo.nFrameLenEx; // 使用 nFrameLenEx
+
+        if (!m_recordingNeedsConvert) {
+          inputInfo.pData = frameOut.pBufAddr;
+          inputInfo.nDataLen = frameOut.stFrameInfo.nFrameLenEx;
+        } else {
+          // 转 BGR8：dstSize = w * h * 3
+          const unsigned int dstSize =
+              static_cast<unsigned int>(extendW) * extendH * 3;
+          if (m_convertBuffer.size() < dstSize) {
+            m_convertBuffer.resize(dstSize);
+          }
+          MV_CC_PIXEL_CONVERT_PARAM_EX cvt;
+          memset(&cvt, 0, sizeof(cvt));
+          cvt.nWidth = static_cast<unsigned short>(extendW);
+          cvt.nHeight = static_cast<unsigned short>(extendH);
+          cvt.pSrcData = frameOut.pBufAddr;
+          cvt.nSrcDataLen = frameOut.stFrameInfo.nFrameLenEx;
+          cvt.enSrcPixelType =
+              static_cast<MvGvspPixelType>(frameOut.stFrameInfo.enPixelType);
+          cvt.enDstPixelType = PixelType_Gvsp_BGR8_Packed;
+          cvt.pDstBuffer = m_convertBuffer.data();
+          cvt.nDstBufferSize = dstSize;
+          int cret = MV_CC_ConvertPixelTypeEx(m_cameraHandle, &cvt);
+          if (cret != MV_OK) {
+            m_recordInputFail.fetch_add(1);
+            qWarning() << "ConvertPixelTypeEx 失败:" << Qt::hex << cret;
+            MV_CC_FreeImageBuffer(m_cameraHandle, &frameOut);
+            continue;
+          }
+          inputInfo.pData = m_convertBuffer.data();
+          inputInfo.nDataLen = cvt.nDstLen;
+        }
+
         int nRet = MV_CC_InputOneFrame(m_cameraHandle, &inputInfo);
         if (nRet != MV_OK) {
-          qWarning() << "录制输入帧失败:" << Qt::hex << nRet;
+          m_recordInputFail.fetch_add(1);
+          static int warnedCount = 0;
+          if (warnedCount++ < 3) {
+            qWarning() << "录制输入帧失败:" << Qt::hex << nRet;
+          }
+        } else {
+          m_recordInputOk.fetch_add(1);
         }
       }
 
@@ -420,6 +458,22 @@ bool CameraController::startRecording(const QString &filePath, float fps,
     qDebug() << "录制 fps 自动取自相机:" << fps;
   }
 
+  // Phase 5 核心修复：判定相机当前像素类型是否被 SDK AVI 录制直接支持。
+  // 不支持（如 Bayer 系列、10/12-bit）时强制走 BGR8 + 转换路径，
+  // 否则 MV_CC_InputOneFrame 会静默失败，导致录出 0 字节文件。
+  m_recordingNeedsConvert = !RecordingDiagnostics::isPixelTypeDirectlyRecordable(
+      static_cast<quint32>(m_pixelType));
+  const MvGvspPixelType recordPixelType =
+      m_recordingNeedsConvert ? PixelType_Gvsp_BGR8_Packed
+                              : static_cast<MvGvspPixelType>(m_pixelType);
+  qDebug() << "录制像素类型:"
+           << RecordingDiagnostics::pixelTypeName(
+                  static_cast<quint32>(m_pixelType))
+           << "→"
+           << RecordingDiagnostics::pixelTypeName(
+                  static_cast<quint32>(recordPixelType))
+           << (m_recordingNeedsConvert ? "(需要转换)" : "(直接录制)");
+
   MV_CC_RECORD_PARAM recordParam;
   memset(&recordParam, 0, sizeof(MV_CC_RECORD_PARAM));
   recordParam.enRecordFmtType = MV_FormatType_AVI;
@@ -427,7 +481,7 @@ bool CameraController::startRecording(const QString &filePath, float fps,
   recordParam.nHeight = static_cast<unsigned short>(m_height);
   recordParam.fFrameRate = fps;
   recordParam.nBitRate = bitRateKbps;
-  recordParam.enPixelType = static_cast<MvGvspPixelType>(m_pixelType);
+  recordParam.enPixelType = recordPixelType;
 
   // SDK 在 Windows 下通常需要本地编码 (GBK) 路径
   // 使用 toLocal8Bit() 而不是 toStdString() (UTF-8)
@@ -445,6 +499,10 @@ bool CameraController::startRecording(const QString &filePath, float fps,
         QString("录制启动失败: 0x%1").arg(ret, 8, 16, QChar('0')));
     return false;
   }
+
+  // Phase 5：重置统计计数
+  m_recordInputOk = 0;
+  m_recordInputFail = 0;
 
   m_isRecording = true;
   emit recordingStarted(filePath);
@@ -467,8 +525,18 @@ void CameraController::stopRecording() {
 
   MV_CC_StopRecord(m_cameraHandle);
   m_isRecording = false;
-  emit recordingStopped(QString::fromStdString(m_recordingPath));
-  qDebug() << "录制已停止:" << QString::fromStdString(m_recordingPath);
+
+  // Phase 5：发录制统计帮助诊断 0 字节问题
+  const QString path = QString::fromStdString(m_recordingPath);
+  const qint64 fileBytes = QFileInfo(path).size();
+  const qint64 ok = m_recordInputOk.load();
+  const qint64 fail = m_recordInputFail.load();
+  qDebug() << RecordingDiagnostics::formatRecordingStats(ok + fail, ok, fail,
+                                                         fileBytes);
+  emit recordingStats(ok + fail, ok, fail, fileBytes);
+
+  emit recordingStopped(path);
+  qDebug() << "录制已停止:" << path;
 }
 
 // ============================================================================

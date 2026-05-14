@@ -95,6 +95,9 @@ signals:
   void recordingStarted(const QString &filePath);
   void recordingStopped(const QString &filePath);
   void recordingError(const QString &message);
+  // Phase 5：录制结束时发出帧统计（成功 vs 失败），便于诊断 0 字节录制
+  void recordingStats(qint64 totalFrames, qint64 inputOk, qint64 inputFail,
+                      qint64 fileBytes);
 
   // 抓拍信号
   void snapshotSaved(const QString &filePath);
@@ -117,6 +120,11 @@ private:
   // 录制状态
   std::atomic<bool> m_isRecording{false};
   std::string m_recordingPath;
+  // Phase 5：录制统计 + 像素转换缓冲区
+  std::atomic<qint64> m_recordInputOk{0};
+  std::atomic<qint64> m_recordInputFail{0};
+  bool m_recordingNeedsConvert = false; // 是否需要先 ConvertPixelType
+  std::vector<unsigned char> m_convertBuffer;
 
   // 当前分辨率与像素格式
   int m_width = 0;

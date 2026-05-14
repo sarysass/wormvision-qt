@@ -150,6 +150,28 @@ void VideoLibraryWidget::refreshLibrary() {
   m_tableWidget->setRowCount(0);
 
   auto videos = DatabaseManager::instance().getAllVideos();
+
+  // Phase 5：清理脏数据——文件不存在或 0 字节的记录（无效录制残留）
+  int prunedCount = 0;
+  for (auto it = videos.begin(); it != videos.end();) {
+    QFileInfo fi(it->filepath);
+    const bool missing = !fi.exists();
+    const bool zeroByte = fi.exists() && fi.size() == 0;
+    if (missing || zeroByte) {
+      DatabaseManager::instance().deleteVideo(it->id);
+      if (zeroByte) {
+        QFile::remove(it->filepath); // 顺手把 0 字节占位文件也删
+      }
+      it = videos.erase(it);
+      prunedCount++;
+    } else {
+      ++it;
+    }
+  }
+  if (prunedCount > 0) {
+    qDebug() << "清理无效记录:" << prunedCount;
+  }
+
   m_tableWidget->setRowCount(videos.size());
 
   int row = 0;

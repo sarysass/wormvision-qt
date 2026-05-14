@@ -252,6 +252,24 @@ void CaptureWidget::setupConnections() {
             QMessageBox::warning(this, "录制错误", msg);
           });
 
+  // Phase 5：监听录制统计，0 字节文件给出明确提示
+  connect(m_camera, &CameraController::recordingStats, this,
+          [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes) {
+            qDebug() << "Recording stats: total=" << total << " ok=" << ok
+                     << " fail=" << fail << " bytes=" << bytes;
+            if (bytes == 0 && total > 0) {
+              QMessageBox::warning(
+                  this, "录制问题",
+                  QString("录制了 %1 帧但文件大小为 0 字节。\n"
+                          "成功输入: %2，失败: %3。\n"
+                          "可能原因：相机像素格式不被 SDK 录制支持，"
+                          "已自动启用 BGR8 转换路径，下次录制应正常。")
+                      .arg(total)
+                      .arg(ok)
+                      .arg(fail));
+            }
+          });
+
   // ===== VideoDisplayWidget FPS 更新 =====
   connect(m_videoDisplay, &VideoDisplayWidget::fpsUpdated, this,
           &CaptureWidget::onFpsUpdated);

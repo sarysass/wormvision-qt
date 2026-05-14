@@ -37,3 +37,10 @@ wormvision_add_test(test_database_manager
         ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
     LIBS Qt6::Sql
 )
+
+# === Phase 5: RecordingDiagnostics 单元测试 ===
+wormvision_add_test(test_recording_diagnostics
+    SOURCES
+        test_recording_diagnostics.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/RecordingDiagnostics.cpp
+)
