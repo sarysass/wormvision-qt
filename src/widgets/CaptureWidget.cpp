@@ -1,6 +1,7 @@
 #include "widgets/CaptureWidget.h"
 #include "data/DatabaseManager.h"
 #include "services/CameraController.h"
+#include "utils/RecordingDiagnostics.h"
 #include "utils/VideoUtils.h"
 #include "widgets/ControlPanelWidget.h"
 #include "widgets/VideoDisplayWidget.h"
@@ -252,23 +253,33 @@ void CaptureWidget::setupConnections() {
             QMessageBox::warning(this, "录制错误", msg);
           });
 
-  // Phase 5：监听录制统计，0 字节文件给出明确提示
-  connect(m_camera, &CameraController::recordingStats, this,
-          [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes) {
-            qDebug() << "Recording stats: total=" << total << " ok=" << ok
-                     << " fail=" << fail << " bytes=" << bytes;
-            if (bytes == 0 && total > 0) {
-              QMessageBox::warning(
-                  this, "录制问题",
-                  QString("录制了 %1 帧但文件大小为 0 字节。\n"
-                          "成功输入: %2，失败: %3。\n"
-                          "可能原因：相机像素格式不被 SDK 录制支持，"
-                          "已自动启用 BGR8 转换路径，下次录制应正常。")
-                      .arg(total)
-                      .arg(ok)
-                      .arg(fail));
-            }
-          });
+  // Phase 5：监听录制统计，0 字节文件给出详细诊断（包含错误码 + 像素类型）
+  connect(
+      m_camera, &CameraController::recordingStats, this,
+      [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes,
+             quint32 lastErr, quint32 pixelType, qint64 convFail) {
+        qDebug() << "录制 stats: total=" << total << " ok=" << ok
+                 << " inputFail=" << fail << " convFail=" << convFail
+                 << " bytes=" << bytes << " lastErr=0x"
+                 << QString::number(lastErr, 16);
+        if (bytes == 0 && total > 0) {
+          QString errHex = QString("0x%1").arg(lastErr, 8, 16, QChar('0'));
+          QString pixelName = RecordingDiagnostics::pixelTypeName(pixelType);
+          QMessageBox::warning(
+              this, "录制问题",
+              QString("文件 0 字节。\n\n"
+                      "帧统计：grab=%1, ok=%2, inputFail=%3, convFail=%4\n"
+                      "录制像素类型：%5\n"
+                      "最后 SDK 错误码：%6\n\n"
+                      "请把这个对话框截图发回去诊断。")
+                  .arg(total)
+                  .arg(ok)
+                  .arg(fail)
+                  .arg(convFail)
+                  .arg(pixelName)
+                  .arg(errHex));
+        }
+      });
 
   // ===== VideoDisplayWidget FPS 更新 =====
   connect(m_videoDisplay, &VideoDisplayWidget::fpsUpdated, this,

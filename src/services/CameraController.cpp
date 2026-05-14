@@ -306,7 +306,8 @@ void CameraController::grabLoop() {
           cvt.nDstBufferSize = dstSize;
           int cret = MV_CC_ConvertPixelTypeEx(m_cameraHandle, &cvt);
           if (cret != MV_OK) {
-            m_recordInputFail.fetch_add(1);
+            m_recordConvertFail.fetch_add(1);
+            m_lastInputErrorCode.store(static_cast<quint32>(cret));
             qWarning() << "ConvertPixelTypeEx 失败:" << Qt::hex << cret;
             MV_CC_FreeImageBuffer(m_cameraHandle, &frameOut);
             continue;
@@ -318,9 +319,13 @@ void CameraController::grabLoop() {
         int nRet = MV_CC_InputOneFrame(m_cameraHandle, &inputInfo);
         if (nRet != MV_OK) {
           m_recordInputFail.fetch_add(1);
-          static int warnedCount = 0;
-          if (warnedCount++ < 3) {
-            qWarning() << "录制输入帧失败:" << Qt::hex << nRet;
+          m_lastInputErrorCode.store(static_cast<quint32>(nRet));
+          // 写到日志文件，方便后续诊断（qInstallMessageHandler 已接管 qWarning）
+          if (m_recordInputFail.load() <= 5) {
+            qWarning() << "InputOneFrame 失败 #"
+                       << m_recordInputFail.load()
+                       << " errCode=" << Qt::hex << nRet
+                       << " nDataLen=" << inputInfo.nDataLen;
           }
         } else {
           m_recordInputOk.fetch_add(1);
@@ -500,9 +505,12 @@ bool CameraController::startRecording(const QString &filePath, float fps,
     return false;
   }
 
-  // Phase 5：重置统计计数
+  // Phase 5：重置统计计数 + 记录实际像素类型
   m_recordInputOk = 0;
   m_recordInputFail = 0;
+  m_recordConvertFail = 0;
+  m_lastInputErrorCode = 0;
+  m_recordingActualPixelType = static_cast<quint32>(recordPixelType);
 
   m_isRecording = true;
   emit recordingStarted(filePath);
@@ -531,9 +539,14 @@ void CameraController::stopRecording() {
   const qint64 fileBytes = QFileInfo(path).size();
   const qint64 ok = m_recordInputOk.load();
   const qint64 fail = m_recordInputFail.load();
-  qDebug() << RecordingDiagnostics::formatRecordingStats(ok + fail, ok, fail,
-                                                         fileBytes);
-  emit recordingStats(ok + fail, ok, fail, fileBytes);
+  const qint64 convFail = m_recordConvertFail.load();
+  const quint32 lastErr = m_lastInputErrorCode.load();
+  qDebug() << RecordingDiagnostics::formatRecordingStats(
+                  ok + fail + convFail, ok, fail + convFail, fileBytes)
+           << "convFail=" << convFail << "lastErr=0x"
+           << QString::number(lastErr, 16);
+  emit recordingStats(ok + fail + convFail, ok, fail, fileBytes, lastErr,
+                      m_recordingActualPixelType, convFail);
 
   emit recordingStopped(path);
   qDebug() << "录制已停止:" << path;
