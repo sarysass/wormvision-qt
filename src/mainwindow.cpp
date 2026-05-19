@@ -2,7 +2,10 @@
 #include "widgets/CaptureWidget.h"
 #include "widgets/VideoLibraryWidget.h"
 #include <QDebug>
+#include <QEasingCurve>
 #include <QFile>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_centralStack(nullptr), m_captureWidget(nullptr),
@@ -71,6 +74,21 @@ void MainWindow::showLibraryView() {
   // 每次切到视频库都重扫目录 + 重读 DB（兜底：即使 addRecording 因为 SDK flush
   // 时序失败，磁盘上的真文件也会被 scanVideoFolder 拾起来）
   m_libraryWidget->rescanAndRefresh();
+
+  // P5：视频库 fade-in 微交互。
+  // 注意：VideoLibraryWidget 不含 native window，加 QGraphicsOpacityEffect 安全；
+  // 采集视图（CaptureWidget 含 VideoDisplayWidget 的 native HWND）绝不能加
+  // effect，否则会强制 Qt 接管渲染破坏零拷贝。动画结束立即移除 effect 零常驻开销。
+  auto *effect = new QGraphicsOpacityEffect(m_libraryWidget);
+  m_libraryWidget->setGraphicsEffect(effect);
+  auto *anim = new QPropertyAnimation(effect, "opacity", this);
+  anim->setDuration(180);
+  anim->setStartValue(0.0);
+  anim->setEndValue(1.0);
+  anim->setEasingCurve(QEasingCurve::OutCubic);
+  connect(anim, &QPropertyAnimation::finished, m_libraryWidget,
+          [this]() { m_libraryWidget->setGraphicsEffect(nullptr); });
+  anim->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 void MainWindow::toggleTheme() {
