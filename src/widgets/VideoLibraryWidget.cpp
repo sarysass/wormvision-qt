@@ -23,11 +23,8 @@
 #include <QVBoxLayout>
 
 VideoLibraryWidget::VideoLibraryWidget(QWidget *parent) : QWidget(parent) {
-  // 确保不透明背景，防止底层控件透视
+  // P3：背景色统一交给 QSS 管理（原来硬编码 30,30,30 与主题 token 不一致）
   setAutoFillBackground(true);
-  QPalette pal = palette();
-  pal.setColor(QPalette::Window, QColor(30, 30, 30)); // 暗色背景
-  setPalette(pal);
 
   setupUI();
   setupConnections();
@@ -50,9 +47,9 @@ void VideoLibraryWidget::setupUI() {
   m_refreshBtn = new QPushButton("刷新", this);
   m_openFolderBtn = new QPushButton("打开文件夹", this);
   m_batchUploadBtn = new QPushButton("上传选中", this);
-  m_batchUploadBtn->setStyleSheet("QPushButton { color: #4fc3f7; }"); // Blue
+  m_batchUploadBtn->setObjectName("primaryButton");
   m_batchDeleteBtn = new QPushButton("删除选中", this);
-  m_batchDeleteBtn->setStyleSheet("QPushButton { color: #ff6b6b; }"); // Red
+  m_batchDeleteBtn->setObjectName("dangerButton");
 
   toolbarLayout->addWidget(m_refreshBtn);
   toolbarLayout->addWidget(m_openFolderBtn);
@@ -97,6 +94,7 @@ void VideoLibraryWidget::setupUI() {
 
   // Status Label
   m_statusLabel = new QLabel("就绪", this);
+  m_statusLabel->setObjectName("statusLabel");
   mainLayout->addWidget(m_statusLabel);
 }
 

@@ -82,6 +82,7 @@ void CaptureWidget::setupUI() {
   toolLayout->setSpacing(10);
 
   m_startPreviewBtn = new QPushButton("开始预览", toolbar);
+  m_startPreviewBtn->setObjectName("primaryButton");
   m_stopPreviewBtn = new QPushButton("停止预览", toolbar);
   m_stopPreviewBtn->setEnabled(false);
   m_snapshotBtn = new QPushButton("抓拍", toolbar);
@@ -98,8 +99,10 @@ void CaptureWidget::setupUI() {
   toolLayout->addWidget(m_taskInfoEdit);
 
   m_startRecordBtn = new QPushButton("开始录制", toolbar);
+  m_startRecordBtn->setObjectName("primaryButton");
   m_startRecordBtn->setEnabled(false);
   m_stopRecordBtn = new QPushButton("停止录制", toolbar);
+  m_stopRecordBtn->setObjectName("dangerButton");
   m_stopRecordBtn->setEnabled(false);
   toolLayout->addWidget(m_startRecordBtn);
   toolLayout->addWidget(m_stopRecordBtn);
@@ -108,12 +111,14 @@ void CaptureWidget::setupUI() {
   toolLayout->addWidget(new QLabel("|", toolbar)); // 分隔符
 
   m_zoomOutBtn = new QPushButton("-", toolbar);
-  m_zoomOutBtn->setFixedWidth(30);
+  m_zoomOutBtn->setObjectName("compactButton");
+  m_zoomOutBtn->setFixedWidth(32);
   m_zoomLabel = new QLabel("100%", toolbar);
-  m_zoomLabel->setFixedWidth(40);
+  m_zoomLabel->setFixedWidth(44);
   m_zoomLabel->setAlignment(Qt::AlignCenter);
   m_zoomInBtn = new QPushButton("+", toolbar);
-  m_zoomInBtn->setFixedWidth(30);
+  m_zoomInBtn->setObjectName("compactButton");
+  m_zoomInBtn->setFixedWidth(32);
   m_fitWindowBtn = new QPushButton("适应", toolbar);
 
   toolLayout->addWidget(m_zoomOutBtn);
@@ -123,13 +128,18 @@ void CaptureWidget::setupUI() {
 
   toolLayout->addStretch();
 
-  // 状态标签
+  // 状态标签（P3：FPS/分辨率/帧数做成 pill badge）
   m_fpsLabel = new QLabel("FPS: --", toolbar);
+  m_fpsLabel->setObjectName("statusBadge");
   m_resolutionLabel = new QLabel("分辨率: --", toolbar);
+  m_resolutionLabel->setObjectName("statusBadge");
   m_frameCountLabel = new QLabel("帧数: 0", toolbar);
+  m_frameCountLabel->setObjectName("statusBadge");
   m_recordingLabel = new QLabel("", toolbar);
-  m_recordingLabel->setStyleSheet("color: red; font-weight: bold;");
+  // 颜色由 QSS #recordingLabel 统一管理（删硬编码 setStyleSheet）
+  m_recordingLabel->setObjectName("recordingLabel");
   m_statusLabel = new QLabel("就绪", toolbar);
+  m_statusLabel->setObjectName("statusLabel");
 
   toolLayout->addWidget(m_fpsLabel);
   toolLayout->addWidget(m_resolutionLabel);
