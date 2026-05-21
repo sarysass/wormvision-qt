@@ -45,6 +45,14 @@ wormvision_add_test(test_recording_diagnostics
         ${CMAKE_SOURCE_DIR}/src/utils/RecordingDiagnostics.cpp
 )
 
+# === AppInstanceLock 单元测试：防止多个进程同时抢占相机 ===
+wormvision_add_test(test_app_instance_lock
+    SOURCES
+        test_app_instance_lock.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AppInstanceLock.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
+)
+
 # === Phase 6: VideoLibraryService 集成测试（防 Phase 4/5 bug 回归）===
 wormvision_add_test(test_video_library_service
     SOURCES

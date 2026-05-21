@@ -97,6 +97,7 @@ private:
   QDateTime m_recordStartTime;
   bool m_isPreviewActive = false;
   int m_selectedDeviceIndex = -1;
+  QString m_lastCameraError;
   // 记录最近一次开始录制的路径，stats 信号（延迟 1.2s）回来时用它入库
   QString m_lastRecordingPath;
 };

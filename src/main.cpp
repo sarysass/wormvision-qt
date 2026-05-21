@@ -1,13 +1,15 @@
 #include "data/DatabaseManager.h"
 #include "mainwindow.h"
+#include "utils/AppInstanceLock.h"
 #include "utils/AppPaths.h"
 #include "utils/ThemeManager.h"
 #include <QApplication>
-#include <QIcon>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
+#include <QMessageBox>
 #include <QMutex>
 #include <QTextStream>
 
@@ -50,14 +52,23 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   app.setWindowIcon(QIcon(":/icons/wormvision.png"));
 
+  // 先设置应用信息，确保日志、数据库、单实例锁都落在同一个 AppData 目录。
+  app.setApplicationName("WormVision");
+  app.setApplicationVersion("1.0.0");
+  app.setOrganizationName("WormLab");
+
   // Phase 5：装文件 logger（必须在 QCoreApplication 之后，因为用 applicationDirPath）
   qInstallMessageHandler(messageHandler);
   qInfo() << "==================== WormVision 启动 ====================";
 
-  // 设置应用程序信息
-  app.setApplicationName("WormVision");
-  app.setApplicationVersion("1.0.0");
-  app.setOrganizationName("WormLab");
+  AppInstanceLock instanceLock;
+  if (!instanceLock.tryLock()) {
+    qWarning() << instanceLock.errorMessage();
+    QMessageBox::warning(nullptr, "WormVision 已在运行",
+                         "WormVision 已经启动，请不要同时打开多个实例。\n\n"
+                         "如果看不到窗口，请先在任务栏中切换到已打开的窗口。");
+    return 0;
+  }
 
   // Phase 2 修复：DB 在启动时初始化
   // 路径用 %LOCALAPPDATA%\WormVision\wormvision.db（不是安装目录）

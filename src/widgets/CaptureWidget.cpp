@@ -194,6 +194,14 @@ void CaptureWidget::setupConnections() {
           &ControlPanelWidget::setOffset);
   connect(m_camera, &CameraController::resultingFrameRateReady, m_controlPanel,
           &ControlPanelWidget::setResultingFrameRate);
+  connect(m_camera, &CameraController::error, this,
+          [this](const QString &message) {
+            m_lastCameraError = message;
+            qWarning() << "相机错误:" << message;
+            if (!message.isEmpty()) {
+              m_statusLabel->setText(message);
+            }
+          });
 
   // ===== 视频显示尺寸同步（Phase 3：原代码复制粘贴了两遍，导致每次信号触发两次）=====
   connect(m_camera, &CameraController::resolutionChanged, m_videoDisplay,
@@ -389,6 +397,7 @@ void CaptureWidget::onRefreshDevicesClicked() {
 void CaptureWidget::onDeviceSelectionChanged(int index) {
   if (index >= 0) {
     m_selectedDeviceIndex = m_deviceCombo->itemData(index).toInt();
+    m_lastCameraError.clear();
 
     // 逻辑优化1: 列表选择后，触发读取相机参数 (Implicit Connect)
     // 如果已有相机打开，先关闭
@@ -404,7 +413,11 @@ void CaptureWidget::onDeviceSelectionChanged(int index) {
       m_statusLabel->setText("相机已连接 (就绪)");
       m_startPreviewBtn->setEnabled(true);
     } else {
-      m_statusLabel->setText("相机连接失败");
+      const QString detail =
+          m_lastCameraError.isEmpty()
+              ? QString("相机连接失败")
+              : QString("相机连接失败: %1").arg(m_lastCameraError);
+      m_statusLabel->setText(detail);
       m_startPreviewBtn->setEnabled(false);
     }
   }
@@ -421,14 +434,24 @@ void CaptureWidget::onStartPreviewClicked() {
 
   // 如果尚未打开 (例如初始化失败或被手动关闭)，尝试重新打开
   if (!m_camera->isOpen()) {
+    m_lastCameraError.clear();
     if (!m_camera->open(m_selectedDeviceIndex)) {
-      m_statusLabel->setText("打开相机失败");
+      const QString detail =
+          m_lastCameraError.isEmpty()
+              ? QString("打开相机失败")
+              : QString("打开相机失败: %1").arg(m_lastCameraError);
+      m_statusLabel->setText(detail);
       return;
     }
   }
 
+  m_lastCameraError.clear();
   if (!m_camera->startGrabbing()) {
-    m_statusLabel->setText("启动采集失败");
+    const QString detail =
+        m_lastCameraError.isEmpty()
+            ? QString("启动采集失败")
+            : QString("启动采集失败: %1").arg(m_lastCameraError);
+    m_statusLabel->setText(detail);
     // 注意：这里不再自动 close，保持连接状态以便重试或调整参数
     return;
   }
