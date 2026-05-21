@@ -43,7 +43,7 @@ if ($missingDlls.Count -gt 0) {
 
 # 1. Locate Visual Studio
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+$installPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1).Trim()
 
 if (-not $installPath) {
     Write-Error "Error: Visual Studio C++ tools not found. Please install MSVC build tools."
@@ -53,7 +53,7 @@ if (-not $installPath) {
 Write-Host "Found Visual Studio at: $installPath"
 
 # 2. Load dev environment
-$devShellModule = Join-Path $installPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+$devShellModule = "$installPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 if (Test-Path $devShellModule) {
     Import-Module $devShellModule
     Enter-VsDevShell -VsInstallPath $installPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"

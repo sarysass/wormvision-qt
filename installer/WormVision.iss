@@ -3,10 +3,15 @@
 ; 输出：installer\Output\WormVision-Setup-1.0.0.exe
 
 #define MyAppName "WormVision"
+#ifndef MyAppVersion
 #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "WormLab"
 #define MyAppURL "https://github.com/sarysass/wormvision-qt"
 #define MyAppExeName "WormVision.exe"
+#ifndef MvsRuntimeArgs
+#define MvsRuntimeArgs "/S"
+#endif
 
 [Setup]
 AppId={{8E2F7C4A-3D9B-4F1E-A872-9C5B6E1D8F02}
@@ -55,6 +60,10 @@ Source: "..\build\generic\*"; DestDir: "{app}\generic"; Flags: ignoreversion rec
 Source: "..\build\CommonParameters.ini"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; VC++ Redistributable 提示文件
 Source: "..\build\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall skipifsourcedoesntexist
+; 海康 MVS SDK Runtime 组件包（可选，由打包脚本通过 /DMvsRuntimeInstaller 注入）
+#ifdef MvsRuntimeInstaller
+Source: "{#MvsRuntimeInstaller}"; DestDir: "{tmp}"; DestName: "MVS_SDK_Runtime_Setup.exe"; Flags: deleteafterinstall
+#endif
 ; 文档
 Source: "..\docs\DLL_DEPENDENCIES.md"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -63,6 +72,11 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; 如果目标机器缺少 MVS Runtime，则安装随包携带的 Runtime 组件包
+#ifdef MvsRuntimeInstaller
+Filename: "{tmp}\MVS_SDK_Runtime_Setup.exe"; Parameters: "{#MvsRuntimeArgs}"; \
+  StatusMsg: "正在安装 Hikvision MVS SDK Runtime..."; Flags: waituntilterminated; Check: ShouldInstallMvsRuntime
+#endif
 ; 静默安装 VC++ 运行时（如果存在）
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
   StatusMsg: "正在安装 Visual C++ 运行时..."; Flags: skipifdoesntexist runascurrentuser
@@ -71,14 +85,28 @@ Filename: "{app}\{#MyAppExeName}"; Description: "立即启动 {#MyAppName}"; \
   Flags: nowait postinstall skipifsilent
 
 [Code]
+function IsMvsRuntimeInstalled(): Boolean;
+begin
+  Result :=
+    DirExists(ExpandConstant('{commoncf32}\MVS\Runtime')) or
+    DirExists(ExpandConstant('{commoncf64}\MVS\Runtime')) or
+    DirExists(ExpandConstant('{commonpf32}\MVS')) or
+    DirExists(ExpandConstant('{commonpf64}\MVS')) or
+    DirExists(ExpandConstant('{pf32}\MVS')) or
+    DirExists(ExpandConstant('{pf}\MVS'));
+end;
+
+function ShouldInstallMvsRuntime(): Boolean;
+begin
+  Result := not IsMvsRuntimeInstalled();
+end;
+
 function InitializeSetup(): Boolean;
-var
-  MvsPath: string;
 begin
   Result := True;
-  // 检测 MVS 客户端是否安装（路径常量）
-  MvsPath := ExpandConstant('{commonpf32}\MVS');
-  if not DirExists(MvsPath) then begin
+#ifndef MvsRuntimeInstaller
+  // 未内置 Runtime 安装器时，仅提示用户；内置时由 [Run] 自动补装。
+  if not IsMvsRuntimeInstalled() then begin
     if MsgBox(
       '检测到此机器未安装 Hikvision MVS 客户端。' + #13#10#13#10 +
       'WormVision 需要相机驱动才能识别相机硬件，' + #13#10 +
@@ -90,4 +118,5 @@ begin
       Result := False;
     end;
   end;
+#endif
 end;
