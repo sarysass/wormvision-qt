@@ -24,6 +24,7 @@ public:
 private slots:
   void onRefreshClicked();
   void onOpenFolderClicked();
+  void onSelectStorageRootClicked();
   void onTableDoubleClicked(int row, int column);
   void onContextMenuRequested(const QPoint &pos);
 
@@ -46,6 +47,7 @@ private:
   QTableWidget *m_tableWidget;
   QPushButton *m_refreshBtn;
   QPushButton *m_openFolderBtn;
+  QPushButton *m_selectStorageRootBtn;
   QPushButton *m_batchUploadBtn;
   QPushButton *m_batchDeleteBtn;
   QLabel *m_statusLabel;

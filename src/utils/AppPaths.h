@@ -5,8 +5,8 @@
 
 // User data path management.
 //
-// All user-generated data (recordings, snapshots, database, log) is written to
-// %LOCALAPPDATA%\WormVision\ rather than the install directory.
+// All user-generated data is written below the configured storage root rather
+// than the install directory. The default root is %LOCALAPPDATA%\WormVision\.
 //
 // Rationale:
 //   1) Program Files is a protected directory on Windows. The Hikvision SDK
@@ -21,10 +21,13 @@ namespace AppPaths {
 
 // 注：行末不要用反斜杠结尾的注释，反斜杠是 C++ 行延续符会把下一行吞掉
 QString appDataDir();      // %LOCALAPPDATA% / WormLab / WormVision
-QString recordingsDir();   // <appData> / recordings
-QString snapshotsDir();    // <appData> / snapshots
+QString storageRootDir();  // user-selected root, or appDataDir() by default
+void setStorageRootDir(const QString &path);
+QString recordingsDir();   // <storageRoot> / recordings
+QString snapshotsDir();    // <storageRoot> / recordings / snapshots
 QString databasePath();    // <appData> / wormvision.db
 QString logPath();         // <appData> / wormvision.log
+void clearStorageRootDirForTest();
 
 } // namespace AppPaths
 

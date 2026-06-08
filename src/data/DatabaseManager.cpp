@@ -166,6 +166,21 @@ QVector<VideoInfo> DatabaseManager::getAllVideos() {
   return list;
 }
 
+QVector<VideoInfo> DatabaseManager::getVideosInDirectory(const QString &dirPath) {
+  QVector<VideoInfo> filtered;
+  const QString targetDir = QDir::cleanPath(QDir(dirPath).absolutePath());
+
+  const QVector<VideoInfo> allVideos = getAllVideos();
+  for (const VideoInfo &video : allVideos) {
+    const QString videoDir =
+        QDir::cleanPath(QFileInfo(video.filepath).absolutePath());
+    if (QString::compare(videoDir, targetDir, Qt::CaseInsensitive) == 0) {
+      filtered.append(video);
+    }
+  }
+  return filtered;
+}
+
 bool DatabaseManager::deleteVideo(int id) {
   QSqlQuery query;
   query.prepare("DELETE FROM videos WHERE id = :id");

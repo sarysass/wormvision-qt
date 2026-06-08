@@ -53,6 +53,13 @@ wormvision_add_test(test_app_instance_lock
         ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
 )
 
+# === AppPaths 单元测试：自定义保存目录与派生目录 ===
+wormvision_add_test(test_app_paths
+    SOURCES
+        test_app_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
+)
+
 # === Phase 6: VideoLibraryService 集成测试（防 Phase 4/5 bug 回归）===
 wormvision_add_test(test_video_library_service
     SOURCES
@@ -61,4 +68,20 @@ wormvision_add_test(test_video_library_service
         ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
     LIBS Qt6::Sql
+)
+
+# === VideoLibraryWidget 集成测试：刷新只显示当前保存目录 ===
+wormvision_add_test(test_video_library_widget
+    SOURCES
+        test_video_library_widget.cpp
+        ${CMAKE_SOURCE_DIR}/src/widgets/VideoLibraryWidget.cpp
+        ${CMAKE_SOURCE_DIR}/src/data/VideoLibraryService.cpp
+        ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/services/CloudService.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
+    LIBS Qt6::Widgets Qt6::Sql Qt6::Network
+)
+set_tests_properties(test_video_library_widget PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM_PLUGIN_PATH=${CMAKE_BINARY_DIR}/platforms"
 )

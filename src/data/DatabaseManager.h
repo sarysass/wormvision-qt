@@ -39,6 +39,7 @@ public:
   bool upsertVideo(const VideoInfo &video);
   VideoInfo getVideoById(int id);
   QVector<VideoInfo> getAllVideos();
+  QVector<VideoInfo> getVideosInDirectory(const QString &dirPath);
   bool updateVideo(int id, const VideoInfo &updates);
   bool deleteVideo(int id);
   bool updateVideoFilename(int id, const QString &newFilename);

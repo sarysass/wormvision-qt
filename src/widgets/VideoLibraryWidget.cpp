@@ -10,6 +10,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -46,6 +47,7 @@ void VideoLibraryWidget::setupUI() {
   QHBoxLayout *toolbarLayout = new QHBoxLayout();
   m_refreshBtn = new QPushButton("刷新", this);
   m_openFolderBtn = new QPushButton("打开文件夹", this);
+  m_selectStorageRootBtn = new QPushButton("选择保存位置", this);
   m_batchUploadBtn = new QPushButton("上传选中", this);
   m_batchUploadBtn->setObjectName("primaryButton");
   m_batchDeleteBtn = new QPushButton("删除选中", this);
@@ -53,6 +55,7 @@ void VideoLibraryWidget::setupUI() {
 
   toolbarLayout->addWidget(m_refreshBtn);
   toolbarLayout->addWidget(m_openFolderBtn);
+  toolbarLayout->addWidget(m_selectStorageRootBtn);
   toolbarLayout->addStretch();
   toolbarLayout->addWidget(m_batchUploadBtn);
   toolbarLayout->addWidget(m_batchDeleteBtn);
@@ -103,6 +106,8 @@ void VideoLibraryWidget::setupConnections() {
           &VideoLibraryWidget::onRefreshClicked);
   connect(m_openFolderBtn, &QPushButton::clicked, this,
           &VideoLibraryWidget::onOpenFolderClicked);
+  connect(m_selectStorageRootBtn, &QPushButton::clicked, this,
+          &VideoLibraryWidget::onSelectStorageRootClicked);
   connect(m_batchDeleteBtn, &QPushButton::clicked, this,
           &VideoLibraryWidget::onBatchDeleteClicked);
   connect(m_batchUploadBtn, &QPushButton::clicked, this,
@@ -151,7 +156,8 @@ void VideoLibraryWidget::refreshLibrary() {
   if (prunedCount > 0) {
     qDebug() << "清理无效记录:" << prunedCount;
   }
-  auto videos = DatabaseManager::instance().getAllVideos();
+  auto videos = DatabaseManager::instance().getVideosInDirectory(
+      AppPaths::recordingsDir());
 
   m_tableWidget->setRowCount(videos.size());
 
@@ -215,6 +221,20 @@ void VideoLibraryWidget::rescanAndRefresh() {
 
 void VideoLibraryWidget::onOpenFolderClicked() {
   QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::recordingsDir()));
+}
+
+void VideoLibraryWidget::onSelectStorageRootClicked() {
+  const QString dir = QFileDialog::getExistingDirectory(
+      this, "选择保存位置", AppPaths::storageRootDir(),
+      QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+  if (dir.isEmpty()) {
+    return;
+  }
+
+  AppPaths::setStorageRootDir(dir);
+  m_statusLabel->setText(
+      QString("保存位置: %1").arg(AppPaths::recordingsDir()));
+  rescanAndRefresh();
 }
 
 void VideoLibraryWidget::onTableDoubleClicked(int row, int column) {

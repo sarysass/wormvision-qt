@@ -5,7 +5,9 @@
 #include "data/DatabaseManager.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QtTest>
 
 class TestDatabaseManager : public QObject {
@@ -107,6 +109,31 @@ private slots:
     DatabaseManager::instance().insertVideo(makeSampleVideo("/tmp/2.avi"));
     DatabaseManager::instance().insertVideo(makeSampleVideo("/tmp/3.avi"));
     QCOMPARE(DatabaseManager::instance().getAllVideos().size(), 3);
+  }
+
+  void getVideosInDirectory_returns_only_exact_directory() {
+    resetDb();
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    QDir rootDir(root.path());
+    QVERIFY(rootDir.mkpath("a"));
+    QVERIFY(rootDir.mkpath("a/snapshots"));
+    QVERIFY(rootDir.mkpath("b"));
+
+    const QString aVideo = rootDir.filePath("a/a.avi");
+    const QString nestedVideo = rootDir.filePath("a/snapshots/nested.avi");
+    const QString bVideo = rootDir.filePath("b/b.avi");
+
+    QVERIFY(DatabaseManager::instance().insertVideo(makeSampleVideo(aVideo)) > 0);
+    QVERIFY(DatabaseManager::instance().insertVideo(
+                makeSampleVideo(nestedVideo)) > 0);
+    QVERIFY(DatabaseManager::instance().insertVideo(makeSampleVideo(bVideo)) > 0);
+
+    const auto videos =
+        DatabaseManager::instance().getVideosInDirectory(rootDir.filePath("a"));
+
+    QCOMPARE(videos.size(), 1);
+    QCOMPARE(QDir::cleanPath(videos.first().filepath), QDir::cleanPath(aVideo));
   }
 
   // ========== 更新 ==========
