@@ -1,0 +1,24 @@
+diff --git a/microhunter/models/ultralytics/yolo.py b/microhunter/models/ultralytics/yolo.py
+index 380ad5e..b5ae22a 100644
+--- a/microhunter/models/ultralytics/yolo.py
++++ b/microhunter/models/ultralytics/yolo.py
+@@ -145,7 +145,8 @@ class YOLOPredictor:
+             "conf": conf,
+             "iou": iou,
+             "imgsz": imgsz,
+-            "half": True,
++            # 默认保留单精度，避免部分显卡上 FP16 检测框溢出；调用方仍可显式覆盖。
++            "half": False,
+             "device": self.device,
+             "verbose": False,
+             "max_det": max_det,
+@@ -219,7 +220,8 @@ class YOLOPredictor:
+             "conf": conf,
+             "iou": iou,
+             "imgsz": imgsz,
+-            "half": True,
++            # 跟踪也使用稳定的单精度检测框，避免无效坐标进入轨迹状态。
++            "half": False,
+             "device": self.device,
+             "verbose": False,
+             "max_det": max_det,

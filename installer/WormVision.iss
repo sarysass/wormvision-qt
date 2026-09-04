@@ -1,10 +1,10 @@
 ; WormVision Installer (Inno Setup 6)
 ; 编译方式：ISCC.exe installer\WormVision.iss
-; 输出：installer\Output\WormVision-Setup-1.1.0.exe
+; 输出：installer\Output\WormVision-Setup-1.1.1.exe
 
 #define MyAppName "WormVision"
 #ifndef MyAppVersion
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #endif
 #define MyAppPublisher "WormLab"
 #define MyAppURL "https://github.com/sarysass/wormvision-qt"

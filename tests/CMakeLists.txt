@@ -100,6 +100,11 @@ wormvision_add_test(test_local_analysis_service
     SOURCES
         test_local_analysis_service.cpp
         ${CMAKE_SOURCE_DIR}/src/services/LocalAnalysisService.cpp
+        ${CMAKE_SOURCE_DIR}/src/widgets/AnalysisWidget.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AnalysisResults.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
-    LIBS Qt6::Network
+    LIBS Qt6::Network Qt6::Widgets
+)
+set_tests_properties(test_local_analysis_service PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM_PLUGIN_PATH=${CMAKE_BINARY_DIR}/platforms;QT_FORCE_STDERR_LOGGING=1"
 )

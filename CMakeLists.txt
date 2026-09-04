@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(WormVision VERSION 1.1.0 LANGUAGES CXX)
+project(WormVision VERSION 1.1.1 LANGUAGES CXX)
 
 # C++ 标准
 set(CMAKE_CXX_STANDARD 17)

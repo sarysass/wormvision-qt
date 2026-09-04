@@ -516,7 +516,10 @@ void AnalysisWidget::startAnalysis() {
   }
   QJsonObject body{{"videos", videos}, {"protocol_id", m_protocol->currentData().toString()},
                    {"route_id", "yolo-sam2-optimized-core"},
-                   {"device", m_device->currentData().toString()}, {"review_video", true}};
+                   {"review_video", true}};
+  // 不传设备时由引擎自动选择；Ultralytics 不接受字符串 "auto"。
+  const QString device = m_device->currentData().toString();
+  if (device != "auto") body.insert("device", device);
   body.insert("pixel_to_mm", m_calibrated->isChecked() ? QJsonValue(m_pixelToMm->value())
                                                        : QJsonValue(QJsonValue::Null));
   m_submitting = true;

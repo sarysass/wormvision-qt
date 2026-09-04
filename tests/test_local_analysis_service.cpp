@@ -1,13 +1,17 @@
 #include "services/LocalAnalysisService.h"
+#include "widgets/AnalysisWidget.h"
 
-#include <QCoreApplication>
+#include <QApplication>
+#include <QComboBox>
 #include <QDir>
 #include <QJsonArray>
+#include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QTextStream>
 #include <QtTest>
 
@@ -22,6 +26,7 @@ int runTestEngine(QCoreApplication &app) {
     return 2;
   }
   int infoRequests = 0;
+  QJsonObject lastRunRequest;
   QObject::connect(&server, &QTcpServer::newConnection, &app, [&]() {
     while (QTcpSocket *socket = server.nextPendingConnection()) {
       QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
@@ -61,6 +66,18 @@ int runTestEngine(QCoreApplication &app) {
               {"info_requests", infoRequests}}).toJson(QJsonDocument::Compact);
         } else if (path == "/api/echo") {
           body = input.mid(headerEnd + 4, contentLength);
+        } else if (path == "/api/license/status") {
+          body = R"({"valid":false,"bundled_release":false})";
+        } else if (path == "/api/runs" && input.startsWith("POST ")) {
+          lastRunRequest = QJsonDocument::fromJson(
+              input.mid(headerEnd + 4, contentLength)).object();
+          body = R"({"id":"test-job","state":"cancelled"})";
+        } else if (path == "/api/runs") {
+          body = "[]";
+        } else if (path == "/api/runs/test-job") {
+          body = R"({"id":"test-job","state":"cancelled"})";
+        } else if (path == "/api/last-run-request") {
+          body = QJsonDocument(lastRunRequest).toJson(QJsonDocument::Compact);
         } else if (path == "/api/fail") {
           status = "403 Forbidden";
           body = QJsonDocument(QJsonObject{{"error", QJsonObject{
@@ -92,6 +109,60 @@ class TestLocalAnalysisService : public QObject {
   Q_OBJECT
 
 private slots:
+  void analysisWidgetSubmitsDeviceChoice_data() {
+    QTest::addColumn<QString>("deviceChoice");
+    QTest::newRow("automatic") << QString("auto");
+    QTest::newRow("cpu") << QString("cpu");
+    QTest::newRow("cuda") << QString("cuda:0");
+  }
+
+  void analysisWidgetSubmitsDeviceChoice() {
+    QFETCH(QString, deviceChoice);
+    QTemporaryFile video(QDir::tempPath() + "/wormvision-device-XXXXXX.avi");
+    QVERIFY(video.open());
+    QVERIFY(video.write("fake video for request validation") > 0);
+    video.close();
+
+    AnalysisWidget widget;
+    widget.setAttribute(Qt::WA_DontShowOnScreen);
+    auto *service = widget.findChild<LocalAnalysisService *>();
+    QVERIFY(service);
+    service->setEngine(QCoreApplication::applicationFilePath());
+    QComboBox *devices = nullptr;
+    for (auto *combo : widget.findChildren<QComboBox *>()) {
+      if (combo->findData("auto") >= 0) devices = combo;
+    }
+    QVERIFY(devices);
+    devices->setCurrentIndex(devices->findData(deviceChoice));
+    auto *start = widget.findChild<QPushButton *>("primaryButton");
+    QVERIFY(start);
+    widget.setSelectedVideos({video.fileName()});
+    widget.show();
+    QTRY_VERIFY_WITH_TIMEOUT(start->isEnabled(), 5000);
+    start->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!widget.hasActiveAnalysis(), 5000);
+
+    QJsonObject submitted;
+    QString requestError;
+    bool done = false;
+    service->get("/api/last-run-request",
+                 [&](const QJsonDocument &doc, const QString &error) {
+      submitted = doc.object();
+      requestError = error;
+      done = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+    QVERIFY2(requestError.isEmpty(), qPrintable(requestError));
+    QCOMPARE(submitted.value("videos").toArray(), QJsonArray{video.fileName()});
+    QCOMPARE(submitted.value("route_id").toString(), QString("yolo-sam2-optimized-core"));
+    if (deviceChoice == "auto") {
+      QVERIFY2(!submitted.contains("device") || submitted.value("device").isNull(),
+               "Automatic selection must use the engine default, not the literal 'auto'");
+    } else {
+      QCOMPARE(submitted.value("device").toString(), deviceChoice);
+    }
+  }
+
   void failedStartCanRecoverAndHandshake() {
     LocalAnalysisService service;
     QSignalSpy errors(&service, &LocalAnalysisService::errorOccurred);
@@ -187,7 +258,7 @@ private slots:
 };
 
 int main(int argc, char **argv) {
-  QCoreApplication app(argc, argv);
+  QApplication app(argc, argv);
   if (app.arguments().value(1) == "serve") {
     return runTestEngine(app);
   }
