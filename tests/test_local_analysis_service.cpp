@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QJsonArray>
+#include <QLabel>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
@@ -67,7 +68,11 @@ int runTestEngine(QCoreApplication &app) {
         } else if (path == "/api/echo") {
           body = input.mid(headerEnd + 4, contentLength);
         } else if (path == "/api/license/status") {
-          body = R"({"valid":false,"bundled_release":false})";
+          const bool unlicensed = qEnvironmentVariableIsSet("WORMVISION_TEST_UNLICENSED");
+          body = QJsonDocument(QJsonObject{
+              {"valid", !unlicensed},
+              {"bundled_release", !qEnvironmentVariableIsSet("WORMVISION_TEST_SOURCE")}})
+                     .toJson(QJsonDocument::Compact);
         } else if (path == "/api/runs" && input.startsWith("POST ")) {
           lastRunRequest = QJsonDocument::fromJson(
               input.mid(headerEnd + 4, contentLength)).object();
@@ -109,6 +114,82 @@ class TestLocalAnalysisService : public QObject {
   Q_OBJECT
 
 private slots:
+  void cleanup() {
+    QSettings().clear();
+    qunsetenv("WORMVISION_TEST_UNLICENSED");
+    qunsetenv("WORMVISION_TEST_SOURCE");
+  }
+
+  void ignoresLegacySourceEngine_data() {
+    QTest::addColumn<QString>("program");
+    QTest::addColumn<QString>("script");
+    QTest::newRow("script-entry") << QString("D:/legacy/launcher.exe")
+                                 << QString("D:/legacy/MicroHunter-Core/run_cli.py");
+    QTest::newRow("python") << QString("D:/legacy/.venv/Scripts/python.exe") << QString();
+    QTest::newRow("pythonw") << QString("D:/legacy/.venv/Scripts/pythonw.exe") << QString();
+  }
+
+  void ignoresLegacySourceEngine() {
+    QFETCH(QString, program);
+    QFETCH(QString, script);
+    QSettings settings;
+    settings.setValue("analysis/engineProgram", program);
+    settings.setValue("analysis/engineScript", script);
+    settings.sync();
+
+    LocalAnalysisService service;
+    QVERIFY2(service.program() != program, "Legacy source engine must not be selected");
+    QVERIFY(!settings.contains("analysis/engineProgram"));
+    QVERIFY(!settings.contains("analysis/engineScript"));
+    QVERIFY(!service.program().contains("MicroHunter-Core", Qt::CaseInsensitive));
+  }
+
+  void unlicensedEngineCannotSubmit_data() {
+    QTest::addColumn<bool>("source");
+    QTest::newRow("release") << false;
+    QTest::newRow("legacy-source") << true;
+  }
+
+  void unlicensedEngineCannotSubmit() {
+    QFETCH(bool, source);
+    qputenv("WORMVISION_TEST_UNLICENSED", "1");
+    if (source) qputenv("WORMVISION_TEST_SOURCE", "1");
+    QTemporaryFile video(QDir::tempPath() + "/wormvision-license-XXXXXX.avi");
+    QVERIFY(video.open());
+    QVERIFY(video.write("fake video for request validation") > 0);
+    video.close();
+
+    AnalysisWidget widget;
+    widget.setAttribute(Qt::WA_DontShowOnScreen);
+    auto *service = widget.findChild<LocalAnalysisService *>();
+    QVERIFY(service);
+    service->setEngine(QCoreApplication::applicationFilePath());
+    auto *start = widget.findChild<QPushButton *>("primaryButton");
+    QVERIFY(start);
+    widget.setSelectedVideos({video.fileName()});
+    widget.show();
+    const auto licenseLoaded = [&]() {
+      for (auto *label : widget.findChildren<QLabel *>()) {
+        if (label->text().contains("许可未激活") || label->text().contains("无需激活"))
+          return true;
+      }
+      return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(licenseLoaded(), 5000);
+    QVERIFY(!start->isEnabled());
+    start->click();
+    QVERIFY(!widget.hasActiveAnalysis());
+
+    bool checked = false;
+    service->get("/api/last-run-request",
+                 [&](const QJsonDocument &doc, const QString &error) {
+      QVERIFY2(error.isEmpty(), qPrintable(error));
+      QVERIFY(doc.object().isEmpty());
+      checked = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(checked, 5000);
+  }
+
   void analysisWidgetSubmitsDeviceChoice_data() {
     QTest::addColumn<QString>("deviceChoice");
     QTest::newRow("automatic") << QString("auto");
@@ -176,7 +257,6 @@ private slots:
     service.setEngine(QCoreApplication::applicationFilePath());
     LocalAnalysisService saved;
     QCOMPARE(saved.program(), service.program());
-    QCOMPARE(saved.script(), QString());
     service.start();
     QVERIFY(!service.isReady());
     QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 5000);

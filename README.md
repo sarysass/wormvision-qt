@@ -3,9 +3,9 @@
 Windows 上的线虫拍摄与本地视频分析软件，使用 Qt Widgets 和海康机器人 MVS SDK。
 
 - 采集相机画面、录像、抓拍和管理本地视频库。
-- 完成录像后勾选视频，调用本机 MicroHunter-Core 分析，不上传视频。
+- 完成录像后勾选视频，调用本机 MicroHunter 发行引擎分析，不上传视频。
 - 固定使用 `yolo-sam2-optimized-core`，显示进度、历史任务、汇总和逐虫指标，并打开轨迹图、标注视频及报告。
-- 保留原有深浅主题，版本 1.1.1 使用仓库中的 WormStudio 图标。
+- 保留原有深浅主题，版本 1.1.2 使用仓库中的 WormStudio 图标。
 
 ## 构建前准备
 
@@ -66,27 +66,28 @@ $env:VCPKG_ROOT = 'C:\dev\vcpkg'
 
 ## 本地分析引擎
 
-Qt 客户端和算法引擎分开构建。运行分析需要 [MicroHunter-Core](https://github.com/inflow-lab/MicroHunter-Core) 的读取权限，或维护者提供的完整引擎发行目录；没有引擎仍可编译和使用拍摄、视频库。
+本地分析使用维护者提供的 `microhunter.7z` 发行包，不运行 MicroHunter-Core 源码。Qt 的编译仍独立于引擎；用户不需要另外安装 Python 或下载模型。
 
-已验证的后端提交为 `9cdd91e1fc44ac1a48e04139fe52ffad2da46477`，要求 Python 3.12、`api_version: 1` 以及 `yolo-sam2-optimized-core` 路线。源码开发时将两个仓库放在同一父目录：
-
-```text
-workspace/
-  wormvision-qt/
-  MicroHunter-Core/
-```
-
-上述 Core 基线默认强制 YOLO 半精度，在本机 GTX 1660 Ti 上会产生非有限检测坐标。仓库提供仅调整 YOLO 默认精度的兼容补丁；在 Core 目录先应用一次（已包含此修复的引擎无需再应用），然后准备环境：
+把发行压缩包完整解压到 `<BuildDir>/engine/`。例如 `microhunter.7z` 放在本仓库的上一级目录，使用 7-Zip：
 
 ```powershell
-git apply ..\wormvision-qt\patches\microhunter-core-yolo-fp32.patch
-uv sync --locked --python 3.12 --no-dev
-.\.venv\Scripts\python.exe -c "from microhunter.deployments.download import load_download_specs, sync_weights; sync_weights(tuple(s for s in load_download_specs() if s.deployment_id in ('worm-yolo-default', 'worm-sam2-default')))"
+& 'C:\Program Files\7-Zip\7z.exe' x ..\microhunter.7z -obuild\engine
 ```
 
-应用会查找相邻 Core 的 `.venv/Scripts/python.exe` 与 `run_cli.py`。安装到 Program Files 后，请在“本地分析 → 引擎设置”选择这两个文件，或使用随安装包携带的完整引擎。引擎设置保存在各自电脑上，不随源码同步；本仓库不提交许可密钥或模型权重。
+解压后的目录应包含：
 
-兼容补丁使用单精度进行 YOLO 检测和跟踪，不过滤无效观测、不修改科研指标，也不改变许可机制。预编译引擎需在引擎源码中纳入修复后重新打包；Qt 安装包本身不会修改外部引擎。
+```text
+build/engine/microhunter/
+  microhunter.exe
+  _internal/
+  weights/
+```
+
+保留压缩包的完整目录与加密权重，不要只复制 exe。要求发行引擎支持本地 API v1 和 `yolo-sam2-optimized-core` 路线；仅有旧 CLI 的发行包不兼容。
+
+应用自动查找自身目录的 `engine/microhunter/microhunter.exe`，也兼容 `engine/microhunter.exe`。外置发行引擎可在“本地分析 → 引擎设置”选择其 exe。升级时忽略旧 Python/脚本配置，不再自动查找相邻源码仓库。
+
+首次使用在“许可与激活”输入有效激活码；只有引擎报告许可有效才启用分析。视频本地处理，许可激活和续期沿用发行引擎的联网规则。发行包保持原样，不应用此前的源码精度补丁。
 
 详细操作、许可行为、结果格式及验证范围见 [本地分析说明](docs/LOCAL_ANALYSIS.md)。
 
@@ -95,10 +96,10 @@ uv sync --locked --python 3.12 --no-dev
 先完成构建与部署，再执行：
 
 ```powershell
-.\scripts\package.ps1 -Version 1.1.1 -SkipBuild
+.\scripts\package.ps1 -Version 1.1.2 -SkipBuild
 ```
 
-产物为 `installer/Output/WormVision-Setup-1.1.1.exe`，默认还会复制到桌面。可使用 `-NoDesktopCopy` 禁止桌面副本；自定义构建目录时同时传入 `-BuildDir`。省略 `-SkipBuild` 时会先构建，支持 `-VcpkgRoot` 和 `-UseInstalledDependencies`。
+产物为 `installer/Output/WormVision-Setup-1.1.2.exe`，默认还会复制到桌面。可使用 `-NoDesktopCopy` 禁止桌面副本；自定义构建目录时同时传入 `-BuildDir`。省略 `-SkipBuild` 时会先构建，支持 `-VcpkgRoot` 和 `-UseInstalledDependencies`。
 
 若要分发包含本地分析能力的完整安装包，先把维护者提供的完整 MicroHunter 引擎复制到 `<BuildDir>/engine/`，保留其依赖和权重。支持 `engine/microhunter.exe` 或 `engine/microhunter/microhunter.exe` 两种目录布局。未放入引擎时，安装包只携带 Qt 应用，使用者需单独配置引擎。
 

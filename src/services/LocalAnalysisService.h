@@ -29,9 +29,8 @@ public:
   bool isReady() const;
   bool isStarting() const;
   QString program() const;
-  QString script() const;
-  /** 保存程序路径及可选的 Python 入口脚本；下次启动生效。 */
-  void setEngine(const QString &program, const QString &script = QString());
+  /** 保存发行版引擎程序路径；下次启动生效。 */
+  void setEngine(const QString &program);
   /** 仅接受当前引擎的 API 相对路径；回调错误字符串为空表示成功。 */
   void get(const QString &path, Callback callback);
   void post(const QString &path, const QJsonObject &body, Callback callback);
@@ -57,7 +56,6 @@ private:
   QTimer *m_probeTimer = nullptr;
   QHash<QNetworkReply *, Callback> m_requests;
   QString m_program;
-  QString m_script;
   QByteArray m_stdout;
   QByteArray m_stderr;
   QUrl m_baseUrl;

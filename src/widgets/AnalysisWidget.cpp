@@ -41,11 +41,6 @@ bool activeState(const QString &state) {
   return state == "queued" || state == "pending" || state == "running";
 }
 
-bool sourceEngine(const QJsonObject &license) {
-  const QJsonValue bundled = license.value("bundled_release");
-  return bundled.isBool() && !bundled.toBool();
-}
-
 QString stateText(const QString &state) {
   if (state == "queued" || state == "pending") return "排队中";
   if (state == "running") return "分析中";
@@ -332,7 +327,7 @@ void AnalysisWidget::setBusyState() {
 void AnalysisWidget::updateControls() {
   const bool busy = hasActiveAnalysis();
   const bool ready = m_service->isReady();
-  const bool permitted = m_license.value("valid").toBool() || sourceEngine(m_license);
+  const bool permitted = m_license.value("valid").toBool();
   m_start->setEnabled(!busy && !m_captureBusy && m_videos->count() > 0 &&
                       ready && permitted);
   m_cancel->setEnabled(ready && !m_activeJobId.isEmpty() && !m_cancelPending);
@@ -357,12 +352,10 @@ void AnalysisWidget::configureEngine() {
   dialog.setWindowTitle("本地分析引擎设置");
   dialog.resize(640, 260);
   auto *layout = new QVBoxLayout(&dialog);
-  layout->addWidget(wrappedLabel("选择已安装的 MicroHunter 引擎程序。使用 Python 开发环境时，"
-                                 "选择 Python 程序和可选的入口脚本。设置会保存在本机。", &dialog));
+  layout->addWidget(wrappedLabel("选择完整解压的 MicroHunter 发行版中的 microhunter.exe。"
+                                 "请保留同目录依赖和权重。设置会保存在本机。", &dialog));
   auto *form = new QFormLayout;
   auto *program = new QLineEdit(m_service->program(), &dialog);
-  auto *script = new QLineEdit(m_service->script(), &dialog);
-  script->setPlaceholderText("发行版引擎无需填写");
   const auto addPath = [&](const QString &label, QLineEdit *edit, const QString &filter) {
     auto *row = new QHBoxLayout;
     row->addWidget(edit, 1);
@@ -374,14 +367,14 @@ void AnalysisWidget::configureEngine() {
       if (!path.isEmpty()) edit->setText(path);
     });
   };
-  addPath("引擎程序", program, "程序 (*.exe);;所有文件 (*)");
-  addPath("Python 入口（可选）", script, "Python 脚本 (*.py);;所有文件 (*)");
+  addPath("引擎程序", program, "程序 (*.exe)");
   layout->addLayout(form);
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
   layout->addWidget(buttons);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
-    if (program->text().trimmed().isEmpty()) {
-      QMessageBox::warning(&dialog, "引擎设置", "请选择引擎程序。");
+    const QFileInfo executable(program->text().trimmed());
+    if (!executable.isFile() || executable.suffix().compare("exe", Qt::CaseInsensitive) != 0) {
+      QMessageBox::warning(&dialog, "引擎设置", "请选择发行版引擎 microhunter.exe。");
       return;
     }
     dialog.accept();
@@ -389,7 +382,7 @@ void AnalysisWidget::configureEngine() {
   connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
   if (dialog.exec() == QDialog::Accepted) {
     m_service->stop();
-    m_service->setEngine(program->text().trimmed(), script->text().trimmed());
+    m_service->setEngine(program->text().trimmed());
     m_service->start();
   }
 }
@@ -403,13 +396,11 @@ void AnalysisWidget::refreshLicense() {
     } else {
       m_license = document.object();
       const bool valid = m_license.value("valid").toBool();
-      const bool source = sourceEngine(m_license);
-      QString text = source ? "源码引擎模式：无需激活（由引擎确认）"
-                            : (valid ? "许可有效" : "许可未激活或已失效，请点击“许可与激活”。");
-      if (!source && valid && !m_license.value("not_after").toString().isEmpty())
+      QString text = valid ? "许可有效" : "许可未激活或已失效，请点击“许可与激活”。";
+      if (valid && !m_license.value("not_after").toString().isEmpty())
         text += " · 到期：" + m_license.value("not_after").toString();
       const QString reason = m_license.value("reason").toString();
-      if (!source && !valid && !reason.isEmpty()) text += "\n" + reason;
+      if (!valid && !reason.isEmpty()) text += "\n" + reason;
       m_licenseStatus->setText(text);
     }
     updateControls();

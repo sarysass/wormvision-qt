@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
 
   // 先设置应用信息，确保日志、数据库、单实例锁都落在同一个 AppData 目录。
   app.setApplicationName("WormVision");
-  app.setApplicationVersion("1.1.1");
+  app.setApplicationVersion("1.1.2");
   app.setOrganizationName("WormLab");
 
   // Phase 5：装文件 logger（必须在 QCoreApplication 之后，因为用 applicationDirPath）

@@ -90,3 +90,11 @@
 - [x] 从暂存源码导出的干净副本完成 Release 构建、三组定向测试及 Inno Setup 安装包生成；构建复用本机已安装的 Qt，SDK 由脚本自动补齐。vcpkg 清单另经依赖解析检查。
 - 发布目标为 `codex/local-analysis-integration` 功能分支，并创建面向 `main` 的草稿 PR 供审阅。
 - 仅上传 Qt 仓库；模型、SDK 二进制、运行环境、录像、机器配置及密钥不加入提交。
+
+### 1.1.2 发行引擎切换
+
+- 用户明确改用工作区根目录的 `microhunter.7z`，不再使用 MicroHunter-Core 源码。
+- 完整解压发行包到 `build/engine/microhunter/`，保留 `_internal` 和两份加密模型，打包时递归包含。
+- 移除源码自动发现与 Python 入口，迁移旧源码配置；只有发行引擎报告许可有效才允许提交分析。
+- 此前源码 FP32 补丁不施加到发行包，当前构建说明已移除该流程。
+- 发行 exe 的帮助命令和离线许可状态查询成功，确认 `bundled_release: true`、`not_activated`；实际模型推理需先激活。

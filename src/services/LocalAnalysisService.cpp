@@ -80,12 +80,11 @@ LocalAnalysisService::~LocalAnalysisService() {
 bool LocalAnalysisService::isReady() const { return m_ready; }
 bool LocalAnalysisService::isStarting() const { return m_starting; }
 QString LocalAnalysisService::program() const { return m_program; }
-QString LocalAnalysisService::script() const { return m_script; }
 
-void LocalAnalysisService::setEngine(const QString &program, const QString &script) {
+void LocalAnalysisService::setEngine(const QString &program) {
   QSettings settings;
   settings.setValue(PROGRAM_KEY, program.trimmed());
-  settings.setValue(SCRIPT_KEY, script.trimmed());
+  settings.remove(SCRIPT_KEY);
   settings.sync();
   discoverEngine();
 }
@@ -93,11 +92,18 @@ void LocalAnalysisService::setEngine(const QString &program, const QString &scri
 void LocalAnalysisService::discoverEngine() {
   QSettings settings;
   m_program = settings.value(PROGRAM_KEY).toString().trimmed();
-  m_script = settings.value(SCRIPT_KEY).toString().trimmed();
+  const QString legacyScript = settings.value(SCRIPT_KEY).toString().trimmed();
+  const QString executableName = QFileInfo(m_program).completeBaseName().toLower();
+  // 升级后不再采用旧源码配置，重新查找随应用安装的发行引擎。
+  if (!legacyScript.isEmpty() || executableName == "python" || executableName == "pythonw") {
+    m_program.clear();
+    settings.remove(PROGRAM_KEY);
+    settings.remove(SCRIPT_KEY);
+    settings.sync();
+  }
   if (!m_program.isEmpty()) {
     return;
   }
-  m_script.clear();
   const QDir appDir(QCoreApplication::applicationDirPath());
   for (const QString &relative : {QStringLiteral("engine/microhunter.exe"),
                                   QStringLiteral("engine/microhunter/microhunter.exe")}) {
@@ -105,23 +111,6 @@ void LocalAnalysisService::discoverEngine() {
     if (QFileInfo(candidate).isFile()) {
       m_program = candidate;
       return;
-    }
-  }
-  // 兼容从 build 目录或 IDE 启动，相邻引擎仓仍以实际文件存在为准。
-  for (const QString &root : {appDir.absolutePath(), QDir::currentPath()}) {
-    QDir directory(root);
-    for (int level = 0; level < 4; ++level) {
-      const QDir core(directory.filePath("../MicroHunter-Core"));
-      const QString python = core.absoluteFilePath(".venv/Scripts/python.exe");
-      const QString entry = core.absoluteFilePath("run_cli.py");
-      if (QFileInfo(python).isFile() && QFileInfo(entry).isFile()) {
-        m_program = QDir::cleanPath(python);
-        m_script = QDir::cleanPath(entry);
-        return;
-      }
-      if (!directory.cdUp()) {
-        break;
-      }
     }
   }
 }
@@ -152,8 +141,7 @@ void LocalAnalysisService::start() {
   environment.insert("PYTHONUTF8", "1");
   environment.insert("PYTHONIOENCODING", "utf-8");
   m_process->setProcessEnvironment(environment);
-  m_process->setWorkingDirectory(QFileInfo(m_script.isEmpty() ? m_program : m_script)
-                                     .absolutePath());
+  m_process->setWorkingDirectory(QFileInfo(m_program).absolutePath());
 #ifdef Q_OS_WIN
   m_process->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
     args->flags |= CREATE_NO_WINDOW;
@@ -178,9 +166,6 @@ void LocalAnalysisService::start() {
   });
 
   QStringList arguments;
-  if (!m_script.isEmpty()) {
-    arguments << "-u" << m_script;
-  }
   arguments << "serve" << "--host" << "127.0.0.1" << "--port" << "0"
             << "--no-browser" << "--parent-pid"
             << QString::number(QCoreApplication::applicationPid())
