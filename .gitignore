@@ -2,6 +2,8 @@
 build/
 cmake-build-*/
 out/
+/dist/
+/installer/Output/
 
 # IDE
 .idea/
@@ -39,9 +41,11 @@ qrc_*
 *.tmp
 *.temp
 *~
+/__incoming_marker__/
 
 # OS
 .DS_Store
+._*
 Thumbs.db
 
 # Database
