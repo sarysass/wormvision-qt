@@ -20,7 +20,7 @@ Windows 上的线虫拍摄与本地视频分析软件，使用 Qt Widgets 和海
 | 海康机器人 MVS x64 SDK | 安装官方完整 MVS 的 Development 和 Runtime 组件；已验证 MVS 4.7（DLL 4.7.0.3）。[官方下载](https://www.hikrobotics.com/en/machinevision/service/download/) |
 | Inno Setup 6（仅打包） | 安装到默认目录，或给打包脚本传入 `-InnoSetupPath` |
 
-SDK 头文件已在仓库中，`MvCameraControl.lib` 和运行 DLL 由脚本从本机 MVS 安装目录补齐。它们不放入 Git；构建前需按供应商条款取得并安装 SDK。
+SDK 头文件已在仓库中，`MvCameraControl.lib` 和运行 DLL 可从配套 Release 的 MVS 构建依赖包取得，也可由脚本从本机 MVS 安装目录补齐。完整依赖清单、固定下载地址、SHA256 和从下载到打包的命令见 [构建依赖交付](docs/BUILD_INPUTS.md)。
 
 ## 从源码构建
 
@@ -66,7 +66,7 @@ $env:VCPKG_ROOT = 'C:\dev\vcpkg'
 
 ## 本地分析引擎
 
-本地分析使用维护者提供的 `microhunter.7z` 发行包，不运行 MicroHunter-Core 源码。Qt 的编译仍独立于引擎；用户不需要另外安装 Python 或下载模型。
+本地分析使用维护者提供的 `microhunter.7z` 发行包，不运行 MicroHunter-Core 源码。压缩包通过 [构建依赖 Release](https://github.com/sarysass/wormvision-qt/releases/tag/build-inputs-1.1.2) 单独分发，不在 Git clone 中；校验信息见 [依赖清单](third_party/build-inputs.json)。Qt 的编译仍独立于引擎；用户不需要另外安装 Python 或下载模型。
 
 把发行压缩包完整解压到 `<BuildDir>/engine/`。例如 `microhunter.7z` 放在本仓库的上一级目录，使用 7-Zip：
 
@@ -89,7 +89,7 @@ build/engine/microhunter/
 
 首次使用在“许可与激活”输入有效激活码；只有引擎报告许可有效才启用分析。视频本地处理，许可激活和续期沿用发行引擎的联网规则。发行包保持原样，不应用此前的源码精度补丁。
 
-详细操作、许可行为、结果格式及验证范围见 [本地分析说明](docs/LOCAL_ANALYSIS.md)。
+当前发行引擎在本机 GTX 1660 Ti 上存在 `Observation.bbox coordinates must be finite` 的已知推理失败，尚未修复。这套依赖用于复现构建，不代表视频分析已经通过验证。详细操作、许可行为、结果格式及验证范围见 [本地分析说明](docs/LOCAL_ANALYSIS.md)。
 
 ## 生成安装包
 

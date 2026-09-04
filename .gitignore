@@ -4,6 +4,7 @@ cmake-build-*/
 out/
 /dist/
 /installer/Output/
+/third_party/downloads/
 
 # IDE
 .idea/

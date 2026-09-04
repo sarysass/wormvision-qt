@@ -1,4 +1,6 @@
-# WormVision-Qt DLL 依赖列表
+# WormVision-Qt DLL 依赖历史参考
+
+> 当前 1.1.2 的可下载依赖、版本、校验值和构建命令以 [构建依赖交付](BUILD_INPUTS.md)、[README](../README.md) 及构建脚本为准。下方保留旧版本的 DLL 分类说明，包含 Qt 6.8、云服务和旧目录示例，不应作为当前打包清单。
 
 > 本文档列出了 WormVision-Qt 项目**实际使用**的 DLL 依赖，基于源代码分析和项目配置。
 

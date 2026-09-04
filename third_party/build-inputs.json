@@ -1,0 +1,28 @@
+{
+  "release": "build-inputs-1.1.2",
+  "platform": "windows-x64",
+  "vcpkg_baseline": "8f095fa0342454181dc10f1b9c176c19b356ee67",
+  "assets": [
+    {
+      "name": "microhunter.7z",
+      "bytes": 1915542859,
+      "sha256": "9f9d379df6e1ccb0b5d79a48224a2dbc266e0acb89a1d55a02774a2ac648a385",
+      "url": "https://github.com/sarysass/wormvision-qt/releases/download/build-inputs-1.1.2/microhunter.7z",
+      "description": "原始发行引擎、运行环境和加密权重；保留已知的非有限检测框推理失败。"
+    },
+    {
+      "name": "wormvision-mvs-4.7.0.3-win64.zip",
+      "bytes": 24760804,
+      "sha256": "a5a0bbf948f1b9d67b9a0f982988b30f6862f4f933ba60c9637464560afcbac4",
+      "url": "https://github.com/sarysass/wormvision-qt/releases/download/build-inputs-1.1.2/wormvision-mvs-4.7.0.3-win64.zip",
+      "description": "当前使用的 MVS 导入库、运行 DLL、ThirdParty DLL 和原始许可；不含相机驱动安装器。"
+    },
+    {
+      "name": "vc_redist.x64.exe",
+      "bytes": 25635768,
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+      "url": "https://github.com/sarysass/wormvision-qt/releases/download/build-inputs-1.1.2/vc_redist.x64.exe",
+      "description": "微软 Visual C++ x64 Redistributable 14.44.35211.0 原始安装器。"
+    }
+  ]
+}
