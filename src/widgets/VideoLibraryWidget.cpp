@@ -1,7 +1,6 @@
 ﻿#include "VideoLibraryWidget.h"
 #include "../data/DatabaseManager.h"
 #include "../data/VideoLibraryService.h"
-#include "../services/CloudService.h"
 #include "../utils/AppPaths.h"
 #include "../utils/VideoUtils.h"
 #include <QAction>
@@ -48,8 +47,8 @@ void VideoLibraryWidget::setupUI() {
   m_refreshBtn = new QPushButton("刷新", this);
   m_openFolderBtn = new QPushButton("打开文件夹", this);
   m_selectStorageRootBtn = new QPushButton("选择保存位置", this);
-  m_batchUploadBtn = new QPushButton("上传选中", this);
-  m_batchUploadBtn->setObjectName("primaryButton");
+  m_analyzeBtn = new QPushButton("分析选中", this);
+  m_analyzeBtn->setObjectName("primaryButton");
   m_batchDeleteBtn = new QPushButton("删除选中", this);
   m_batchDeleteBtn->setObjectName("dangerButton");
 
@@ -57,16 +56,16 @@ void VideoLibraryWidget::setupUI() {
   toolbarLayout->addWidget(m_openFolderBtn);
   toolbarLayout->addWidget(m_selectStorageRootBtn);
   toolbarLayout->addStretch();
-  toolbarLayout->addWidget(m_batchUploadBtn);
+  toolbarLayout->addWidget(m_analyzeBtn);
   toolbarLayout->addWidget(m_batchDeleteBtn);
 
   mainLayout->addLayout(toolbarLayout);
 
   // Table Widget (replacing QListWidget)
   m_tableWidget = new QTableWidget(this);
-  m_tableWidget->setColumnCount(5);
+  m_tableWidget->setColumnCount(4);
   m_tableWidget->setHorizontalHeaderLabels(
-      {"", "文件名", "时长", "大小", "上传状态"});
+      {"", "文件名", "时长", "大小"});
   m_tableWidget->horizontalHeader()->setSectionResizeMode(
       0, QHeaderView::Fixed); // Checkbox
   m_tableWidget->horizontalHeader()->setSectionResizeMode(
@@ -75,12 +74,9 @@ void VideoLibraryWidget::setupUI() {
       2, QHeaderView::Fixed); // Duration
   m_tableWidget->horizontalHeader()->setSectionResizeMode(
       3, QHeaderView::Fixed); // Size
-  m_tableWidget->horizontalHeader()->setSectionResizeMode(
-      4, QHeaderView::Fixed);           // Status
   m_tableWidget->setColumnWidth(0, 30); // Checkbox
   m_tableWidget->setColumnWidth(2, 70); // Duration - wider
   m_tableWidget->setColumnWidth(3, 90); // Size - wider
-  m_tableWidget->setColumnWidth(4, 80); // Status - wider
   m_tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_tableWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -110,8 +106,8 @@ void VideoLibraryWidget::setupConnections() {
           &VideoLibraryWidget::onSelectStorageRootClicked);
   connect(m_batchDeleteBtn, &QPushButton::clicked, this,
           &VideoLibraryWidget::onBatchDeleteClicked);
-  connect(m_batchUploadBtn, &QPushButton::clicked, this,
-          &VideoLibraryWidget::onBatchUploadClicked);
+  connect(m_analyzeBtn, &QPushButton::clicked, this,
+          &VideoLibraryWidget::requestAnalysis);
   connect(m_tableWidget, &QTableWidget::cellDoubleClicked, this,
           &VideoLibraryWidget::onTableDoubleClicked);
   connect(m_tableWidget, &QTableWidget::customContextMenuRequested, this,
@@ -119,6 +115,8 @@ void VideoLibraryWidget::setupConnections() {
 }
 
 void VideoLibraryWidget::scanVideoFolder() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   QString videoDir = AppPaths::recordingsDir();
   QDir dir(videoDir);
   qDebug() << "扫描视频目录:" << videoDir << "存在:" << dir.exists();
@@ -130,6 +128,8 @@ void VideoLibraryWidget::scanVideoFolder() {
 
   int total = 0;
   for (const QFileInfo &fileInfo : fileList) {
+    if (fileInfo.size() == 0)
+      continue;
     VideoInfo info;
     info.filename = fileInfo.fileName();
     info.filepath = fileInfo.absoluteFilePath();
@@ -148,6 +148,8 @@ void VideoLibraryWidget::scanVideoFolder() {
 }
 
 void VideoLibraryWidget::refreshLibrary() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   m_tableWidget->setRowCount(0);
 
   // Phase 5/6：脏数据清理委托给 VideoLibraryService（有单元测试覆盖）
@@ -186,11 +188,6 @@ void VideoLibraryWidget::refreshLibrary() {
     sizeItem->setTextAlignment(Qt::AlignCenter);
     m_tableWidget->setItem(row, 3, sizeItem);
 
-    // Column 4: Upload Status
-    QTableWidgetItem *statusItem = new QTableWidgetItem("未上传");
-    statusItem->setTextAlignment(Qt::AlignCenter);
-    m_tableWidget->setItem(row, 4, statusItem);
-
     row++;
   }
 
@@ -215,8 +212,38 @@ void VideoLibraryWidget::onRefreshClicked() {
 }
 
 void VideoLibraryWidget::rescanAndRefresh() {
+  if (m_captureBusy || m_analysisBusy) {
+    updateOperationState();
+    return;
+  }
   scanVideoFolder();
   refreshLibrary();
+}
+
+void VideoLibraryWidget::setCaptureBusy(bool busy) {
+  m_captureBusy = busy;
+  updateOperationState();
+  if (!m_captureBusy && !m_analysisBusy)
+    rescanAndRefresh();
+}
+
+void VideoLibraryWidget::setAnalysisBusy(bool busy) {
+  m_analysisBusy = busy;
+  updateOperationState();
+  if (!m_captureBusy && !m_analysisBusy)
+    rescanAndRefresh();
+}
+
+void VideoLibraryWidget::updateOperationState() {
+  const bool idle = !m_captureBusy && !m_analysisBusy;
+  m_analyzeBtn->setEnabled(idle);
+  m_batchDeleteBtn->setEnabled(idle);
+  m_selectStorageRootBtn->setEnabled(idle);
+  m_refreshBtn->setEnabled(idle);
+  if (m_captureBusy)
+    m_statusLabel->setText("录像尚未保存完成，请稍候再分析或管理文件");
+  else if (m_analysisBusy)
+    m_statusLabel->setText("本地分析进行中，完成后可继续分析或管理文件");
 }
 
 void VideoLibraryWidget::onOpenFolderClicked() {
@@ -224,6 +251,8 @@ void VideoLibraryWidget::onOpenFolderClicked() {
 }
 
 void VideoLibraryWidget::onSelectStorageRootClicked() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   const QString dir = QFileDialog::getExistingDirectory(
       this, "选择保存位置", AppPaths::storageRootDir(),
       QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
@@ -256,11 +285,11 @@ void VideoLibraryWidget::onContextMenuRequested(const QPoint &pos) {
   menu.addAction("播放", this, &VideoLibraryWidget::onPlayAction);
   menu.addAction("打开所在文件夹", this,
                  &VideoLibraryWidget::onOpenFolderClicked);
-  menu.addAction("重命名", this, &VideoLibraryWidget::onRenameAction);
-  menu.addAction("删除", this, &VideoLibraryWidget::onDeleteAction);
+  const bool idle = !m_captureBusy && !m_analysisBusy;
+  menu.addAction("重命名", this, &VideoLibraryWidget::onRenameAction)->setEnabled(idle);
+  menu.addAction("删除", this, &VideoLibraryWidget::onDeleteAction)->setEnabled(idle);
   menu.addSeparator();
-  menu.addAction("上传到云端 (Mock)", this,
-                 &VideoLibraryWidget::onUploadAction);
+  menu.addAction("本地分析", this, &VideoLibraryWidget::requestAnalysis)->setEnabled(idle);
 
   menu.exec(m_tableWidget->mapToGlobal(pos));
 }
@@ -273,6 +302,8 @@ void VideoLibraryWidget::onPlayAction() {
 }
 
 void VideoLibraryWidget::onRenameAction() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   int row = m_tableWidget->currentRow();
   if (row < 0)
     return;
@@ -307,6 +338,8 @@ void VideoLibraryWidget::onRenameAction() {
 }
 
 void VideoLibraryWidget::onDeleteAction() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   int row = m_tableWidget->currentRow();
   if (row < 0)
     return;
@@ -326,15 +359,9 @@ void VideoLibraryWidget::onDeleteAction() {
   }
 }
 
-void VideoLibraryWidget::onUploadAction() {
-  // Phase 4 修复 #11：原代码弹"上传成功"会误导用户——CloudService 仍是 Mock。
-  // 明确告知功能尚未实现，避免用户以为视频已上云。
-  QMessageBox::information(this, "云服务",
-                           "云上传功能尚未实现。\n"
-                           "（CloudService 当前为 Mock，未对接真实后端）");
-}
-
 void VideoLibraryWidget::onBatchDeleteClicked() {
+  if (m_captureBusy || m_analysisBusy)
+    return;
   // Get all checked items
   QList<int> rowsToDelete;
   for (int row = 0; row < m_tableWidget->rowCount(); ++row) {
@@ -372,24 +399,41 @@ void VideoLibraryWidget::onBatchDeleteClicked() {
   m_statusLabel->setText(QString("已删除 %1 个视频").arg(rowsToDelete.size()));
 }
 
-void VideoLibraryWidget::onBatchUploadClicked() {
-  // Get all checked items
-  QList<int> rowsToUpload;
-  for (int row = 0; row < m_tableWidget->rowCount(); ++row) {
-    QTableWidgetItem *item = m_tableWidget->item(row, 0);
-    if (item && item->checkState() == Qt::Checked) {
-      rowsToUpload.append(row);
-    }
-  }
-
-  if (rowsToUpload.isEmpty()) {
-    QMessageBox::information(this, "提示", "请先勾选要上传的视频");
+void VideoLibraryWidget::requestAnalysis() {
+  if (m_captureBusy || m_analysisBusy) {
+    updateOperationState();
     return;
   }
-
-  // TODO: Implement actual upload logic
-  QMessageBox::information(
-      this, "上传功能",
-      QString("已选中 %1 个视频待上传\n\n（上传功能待实现）")
-          .arg(rowsToUpload.size()));
+  QList<int> rows;
+  for (int row = 0; row < m_tableWidget->rowCount(); ++row) {
+    QTableWidgetItem *item = m_tableWidget->item(row, 0);
+    if (item && item->checkState() == Qt::Checked)
+      rows.append(row);
+  }
+  if (rows.isEmpty()) {
+    for (const auto &index : m_tableWidget->selectionModel()->selectedRows())
+      rows.append(index.row());
+  }
+  if (rows.isEmpty()) {
+    m_statusLabel->setText("请勾选或选中需要分析的视频");
+    return;
+  }
+  std::sort(rows.begin(), rows.end());
+  QStringList paths;
+  for (int row : rows) {
+    const auto *item = m_tableWidget->item(row, 0);
+    const QFileInfo file(item->data(Qt::UserRole + 1).toString());
+    if (!file.isFile() || file.size() <= 0) {
+      m_statusLabel->setText(QString("视频不存在或尚未保存完成：%1").arg(file.fileName()));
+      return;
+    }
+    if (file.suffix().compare("avi", Qt::CaseInsensitive) == 0 &&
+        VideoUtils::parseVideoDurationFromFile(file.absoluteFilePath()) <= 0.0) {
+      m_statusLabel->setText(QString("录像时长尚不可读，可能仍在保存：%1").arg(file.fileName()));
+      return;
+    }
+    paths.append(file.absoluteFilePath());
+  }
+  paths.removeDuplicates();
+  emit analysisRequested(paths);
 }

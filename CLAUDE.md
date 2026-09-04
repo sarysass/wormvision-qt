@@ -18,9 +18,9 @@ cmake --build build --config Release
 .\build\WormVision.exe
 ```
 
-**Build Configuration**: CMake 3.20+, Ninja generator, vcpkg toolchain at `C:/vcpkg/scripts/buildsystems/vcpkg.cmake`, C++17, Qt 6.x (实际 vcpkg 装 6.10), Release build only.
+**Build Configuration**: CMake 3.22+, Ninja generator, vcpkg through `VCPKG_ROOT` / `-VcpkgRoot`, C++17, pinned Qt 6.10, Release build only. Current setup instructions are in [README.md](README.md).
 
-`build.ps1` 包含完整流程：自动从 MVS 安装目录同步 SDK DLL（含 ThirdParty）→ 加载 VS 环境 → configure → build → windeployqt → 拷 sqlite3.dll。新机器 git clone 后直接跑 `build.ps1` 就能完整产出。
+`build.ps1` 包含完整流程：自动从 MVS 安装目录同步 SDK DLL（含 ThirdParty）和导入库 → 加载 VS 环境 → configure → build → windeployqt → 拷 sqlite3.dll。新机器先按 README 安装 MSVC、vcpkg 和 MVS，再运行脚本；脚本不删除已有构建目录。
 
 ## Architecture Overview
 
@@ -34,7 +34,7 @@ WormVision-Qt is a high-performance industrial camera application using Hikvisio
 - Uses zero-copy rendering: `MV_CC_DisplayOneFrameEx2` renders directly to window handle via `VideoDisplayWidget`
 - 录制时不支持的像素类型（如 Bayer）自动走 `MV_CC_ConvertPixelTypeEx` 转 BGR8
 - 录制路径保留 `std::string m_recordingPath`（GBK，给 SDK）+ `QString m_recordingPathQt`（给 Qt，避免编码丢失）
-- 录制 stop 后用 `QTimer` 轮询文件大小直到 > 0（SDK 异步 flush AVI 索引）
+- 录制 stop 后用 `QTimer` 等待文件大小稳定且 AVI 头可解析出时长，再解除录像忙状态。
 - All SDK error codes logged in hex format (`0x%1`)
 - Critical: Never block UI thread - all camera operations are async or worker-threaded
 
@@ -113,12 +113,7 @@ All camera SDK development must reference official documentation in `Development
 
 ## Testing
 
-- **自动化（ctest）**：`tests/` 下 5 个 Qt Test suite，51 个 case，覆盖纯函数 + DB CRUD + service 层：
-  - `test_smoke` 1 case：框架自检
-  - `test_video_utils` 17 case：formatDuration、AVI/MP4 时长解析
-  - `test_database_manager` 13 case：CRUD、UNIQUE 冲突、upsert
-  - `test_recording_diagnostics` 10 case：像素白名单、统计格式化
-  - `test_video_library_service` 10 case：录制入库、脏数据清理、retry 场景
+- **自动化（ctest）**：覆盖纯函数、数据库与视频库、应用路径与单实例、本地引擎服务及分析结果解析。具体目标见 `tests/CMakeLists.txt`，本次功能的定向测试命令见 README。
 
   跑法（build 完后在 `build/` 目录）：`ctest --output-on-failure`
 

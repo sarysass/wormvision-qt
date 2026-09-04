@@ -8,6 +8,7 @@
 
 class CaptureWidget;
 class VideoLibraryWidget;
+class AnalysisWidget;
 class DatabaseManager;
 
 class MainWindow : public QMainWindow {
@@ -20,7 +21,11 @@ public:
 private slots:
   void showCaptureView();
   void showLibraryView();
+  void showAnalysisView();
   void toggleTheme();
+
+protected:
+  void closeEvent(QCloseEvent *event) override;
 
 private:
   void setupUI();
@@ -31,10 +36,12 @@ private:
   QStackedWidget *m_centralStack;
   CaptureWidget *m_captureWidget;
   VideoLibraryWidget *m_libraryWidget;
+  AnalysisWidget *m_analysisWidget = nullptr;
 
   QToolBar *m_toolBar;
   QAction *m_captureAction;
   QAction *m_libraryAction;
+  QAction *m_analysisAction = nullptr;
   QAction *m_themeAction;
 
   bool m_isDarkTheme = true;

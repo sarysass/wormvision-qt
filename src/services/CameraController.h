@@ -68,10 +68,11 @@ public:
   float currentResultingFps() const;
 
 private:
-  // SDK flush 是异步的，轮询文件大小直到 > 0 或超时再 emit stats
+  // SDK flush 是异步的，等待文件大小稳定且 AVI 时长可解析后再 emit stats。
   void pollFlushAndEmitStats(const QString &path, qint64 ok, qint64 fail,
                              qint64 convFail, quint32 lastErr,
-                             quint32 actualPixel, int retriesLeft);
+                             quint32 actualPixel, int retriesLeft,
+                             qint64 previousSize = -1, int stableChecks = 0);
 public:
 
   // ========== 抓拍功能 ==========
@@ -106,6 +107,7 @@ signals:
   // lastErrCode 最后一次 InputOneFrame 的 SDK 错误码（0 表示无失败）
   // pixelType 录制实际使用的像素类型枚举值（转换后或原始）
   // convertFail 仅记 ConvertPixelType 失败次数（与 inputFail 互斥）
+  // fileBytes < 0 表示停止后文件在等待期内仍未稳定或 AVI 时长不可读。
   void recordingStats(qint64 totalFrames, qint64 inputOk, qint64 inputFail,
                       qint64 fileBytes, quint32 lastErrCode, quint32 pixelType,
                       qint64 convertFail);

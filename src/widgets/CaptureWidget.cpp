@@ -249,27 +249,26 @@ void CaptureWidget::setupConnections() {
     m_videoDisplay->notifyFrameRendered();
   });
   connect(m_camera, &CameraController::recordingStarted, this,
-          [this](const QString &) { m_recordingLabel->setText("● 录制中"); });
+          [this](const QString &) {
+            setRecordingBusy(true);
+            m_recordingLabel->setText("● 录制中");
+          });
   connect(m_camera, &CameraController::recordingStopped, this,
           [this](const QString & /*filePath*/) {
-            // 立即给 UI 反馈，但不在这里入库——SDK 此刻还在 flush AVI 索引，
-            // 入库逻辑移到 recordingStats（1.2s 后触发，那时文件大小才稳定）
-            m_recordingLabel->setText("");
+            // 保持忙状态到统计与入库完成，防止分析仍在写入的视频。
+            m_recordTimer->stop();
+            m_stopRecordBtn->setEnabled(false);
+            m_recordingLabel->setText("正在保存录像…");
           });
   connect(m_camera, &CameraController::recordingError, this,
           [this](const QString &msg) {
             m_recordingLabel->setText("");
-            m_startRecordBtn->setEnabled(true);
+            setRecordingBusy(false);
             m_stopRecordBtn->setEnabled(false);
             QMessageBox::warning(this, "录制错误", msg);
           });
 
-  // 录制统计在 SDK flush 完成后 1.2 秒触发，承担两个职责：
-  //   1) bytes > 0 → 把视频入库（路径由 CameraController 记录在 m_recordingPath，
-  //      这里通过最近一次 lastSavedRecordingPath 拿到。但为了零耦合，
-  //      我们让 addRecording 接收路径——由 stats 信号附带不便，
-  //      改成：CaptureWidget 自己记下 startRecording 时的路径）
-  //   2) bytes == 0 → 弹错诊断框
+  // 统计回来后入库并解除忙状态；在此之前禁止开始下一段录像。
   connect(
       m_camera, &CameraController::recordingStats, this,
       [this](qint64 total, qint64 ok, qint64 fail, qint64 bytes,
@@ -283,6 +282,11 @@ void CaptureWidget::setupConnections() {
           // 正常：入库
           VideoLibraryService::addRecording(m_lastRecordingPath,
                                             DatabaseManager::instance());
+        } else if (bytes < 0) {
+          QMessageBox::warning(
+              this, "录像保存未完成",
+              "录像文件在等待期内仍未稳定，或 AVI 时长尚不可读。\n"
+              "保存尚未确认；请稍后刷新视频库，确认文件可读后再分析。");
         } else if (bytes == 0 && total > 0) {
           QString errHex = QString("0x%1").arg(lastErr, 8, 16, QChar('0'));
           QString pixelName = RecordingDiagnostics::pixelTypeName(pixelType);
@@ -300,6 +304,9 @@ void CaptureWidget::setupConnections() {
                   .arg(pixelName)
                   .arg(errHex));
         }
+        m_lastRecordingPath.clear();
+        m_recordingLabel->clear();
+        setRecordingBusy(false);
       });
 
   // ===== VideoDisplayWidget FPS 更新 =====
@@ -374,6 +381,8 @@ void CaptureWidget::onVideoPanDelta(int dx, int dy) {
 // ============================================================================
 
 void CaptureWidget::onRefreshDevicesClicked() {
+  if (m_recordingBusy)
+    return;
   m_deviceCombo->blockSignals(true);
   m_deviceCombo->clear();
 
@@ -395,6 +404,8 @@ void CaptureWidget::onRefreshDevicesClicked() {
 }
 
 void CaptureWidget::onDeviceSelectionChanged(int index) {
+  if (m_recordingBusy)
+    return;
   if (index >= 0) {
     m_selectedDeviceIndex = m_deviceCombo->itemData(index).toInt();
     m_lastCameraError.clear();
@@ -462,7 +473,7 @@ void CaptureWidget::onStartPreviewClicked() {
   m_snapshotBtn->setEnabled(true);
 
   // 只有在预览时才允许录制
-  m_startRecordBtn->setEnabled(true);
+  m_startRecordBtn->setEnabled(!m_recordingBusy);
 
   // 预览时禁用分辨率设置 (防止硬件错误)
   m_controlPanel->setResolutionEnabled(false);
@@ -515,6 +526,8 @@ void CaptureWidget::onCaptureSnapshotClicked() {
 }
 
 void CaptureWidget::onStartRecordingClicked() {
+  if (m_recordingBusy)
+    return;
   if (!m_isPreviewActive)
     return;
 
@@ -529,6 +542,7 @@ void CaptureWidget::onStartRecordingClicked() {
 
   // 记录路径供延迟入库使用
   m_lastRecordingPath = filePath;
+  setRecordingBusy(true);
   // Phase 3 修复 #4：fps 不再写死，传 -1 让 CameraController 用真实 ResultingFrameRate
   if (m_camera->startRecording(filePath, -1.0f, 4000)) {
     m_startRecordBtn->setEnabled(false);
@@ -538,15 +552,28 @@ void CaptureWidget::onStartRecordingClicked() {
     // 启动录制计时器
     m_recordTimer->start(1000);
     onRecordTimerTimeout(); // 立即更新一次
+  } else {
+    m_lastRecordingPath.clear();
+    setRecordingBusy(false);
   }
 }
 
 void CaptureWidget::onStopRecordingClicked() {
   m_camera->stopRecording();
-  m_startRecordBtn->setEnabled(true);
+  m_startRecordBtn->setEnabled(m_isPreviewActive && !m_recordingBusy);
   m_stopRecordBtn->setEnabled(false);
   m_recordTimer->stop();
   emit recordingStopped();
+}
+
+void CaptureWidget::setRecordingBusy(bool busy) {
+  if (m_recordingBusy == busy)
+    return;
+  m_recordingBusy = busy;
+  m_startRecordBtn->setEnabled(m_isPreviewActive && !busy);
+  m_deviceCombo->setEnabled(!busy);
+  m_refreshDevicesBtn->setEnabled(!busy);
+  emit recordingBusyChanged(busy);
 }
 
 void CaptureWidget::onRecordTimerTimeout() {

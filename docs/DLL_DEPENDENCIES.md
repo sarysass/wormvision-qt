@@ -23,7 +23,7 @@
 | **Qt6Gui.dll** | GUI 基础（QPalette、QImage） | VideoDisplayWidget |
 | **Qt6Widgets.dll** | UI 组件（QWidget、QPushButton） | 全部 Widget |
 | **Qt6Sql.dll** | SQLite 数据库 | DatabaseManager |
-| **Qt6Network.dll** | 网络通信 | CloudService |
+| **Qt6Network.dll** | 本地引擎 HTTP 通信 | LocalAnalysisService |
 
 ### ❌ 未使用（vcpkg 可能自动部署）
 | DLL 名称 | 原因 |

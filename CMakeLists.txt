@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.20)
-project(WormVision VERSION 1.0.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.22)
+project(WormVision VERSION 1.1.0 LANGUAGES CXX)
 
 # C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -18,11 +18,12 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Sql
     Network
-    Test
 )
 
-# 启用测试
-enable_testing()
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+endif()
 
 # 源文件 (移除 VideoRecorder)
 set(SOURCES
@@ -33,6 +34,9 @@ set(SOURCES
     src/widgets/ControlPanelWidget.cpp
     src/services/CameraController.cpp
     src/widgets/VideoLibraryWidget.cpp
+    src/widgets/AnalysisWidget.cpp
+    src/services/LocalAnalysisService.cpp
+    src/utils/AnalysisResults.cpp
     src/data/DatabaseManager.cpp
     src/data/VideoLibraryService.cpp
     src/utils/ThemeManager.cpp
@@ -40,7 +44,6 @@ set(SOURCES
     src/utils/RecordingDiagnostics.cpp
     src/utils/AppInstanceLock.cpp
     src/utils/AppPaths.cpp
-    src/services/CloudService.cpp
 )
 
 # 头文件 (移除 VideoRecorder)
@@ -50,6 +53,9 @@ set(HEADERS
     src/widgets/CaptureWidget.h
     src/widgets/ControlPanelWidget.h
     src/widgets/VideoLibraryWidget.h
+    src/widgets/AnalysisWidget.h
+    src/services/LocalAnalysisService.h
+    src/utils/AnalysisResults.h
     src/services/CameraController.h
     src/data/DatabaseManager.h
     src/data/VideoLibraryService.h
@@ -86,8 +92,12 @@ target_link_libraries(WormVision PRIVATE
 
 # 海康威视 SDK
 target_include_directories(WormVision PRIVATE ${CMAKE_SOURCE_DIR}/libs/hikvision/include)
-target_link_directories(WormVision PRIVATE ${CMAKE_SOURCE_DIR}/libs/hikvision/bin)
-target_link_libraries(WormVision PRIVATE MvCameraControl)
+find_library(HIKVISION_LIBRARY NAMES MvCameraControl
+    PATHS "${CMAKE_SOURCE_DIR}/libs/hikvision/bin" NO_DEFAULT_PATH)
+if(NOT HIKVISION_LIBRARY)
+    message(FATAL_ERROR "Missing MvCameraControl.lib. Install Hikrobot MVS x64 Development components and run scripts/build.ps1. See README.md.")
+endif()
+target_link_libraries(WormVision PRIVATE "${HIKVISION_LIBRARY}")
 
 # 复制 DLL 到输出目录 (Windows)
 if(WIN32)
@@ -97,16 +107,21 @@ if(WIN32)
             $<TARGET_FILE:Qt6::Widgets>
             $<TARGET_FILE:Qt6::Gui>
             $<TARGET_FILE:Qt6::Core>
+            $<TARGET_FILE:Qt6::Network>
+            $<TARGET_FILE:Qt6::Sql>
             $<TARGET_FILE_DIR:WormVision>
     )
 
     # Copy Hikvision SDK DLLs
     file(GLOB HIK_DLLS "${CMAKE_SOURCE_DIR}/libs/hikvision/bin/*.dll")
-    add_custom_command(TARGET WormVision POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${HIK_DLLS}
-            $<TARGET_FILE_DIR:WormVision>
-    )
+    if(HIK_DLLS)
+        add_custom_command(TARGET WormVision POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${HIK_DLLS}
+                "${CMAKE_SOURCE_DIR}/libs/hikvision/bin/CommonParameters.ini"
+                $<TARGET_FILE_DIR:WormVision>
+        )
+    endif()
 endif()
 
 # 安装配置
@@ -115,14 +130,6 @@ install(TARGETS WormVision DESTINATION bin)
 # ============================================================================
 # 测试
 # ============================================================================
-add_subdirectory(tests)
-
-# [Post-Build] 自动拷贝 Hikvision SDK 的 DLL 到输出目录
-if(WIN32)
-    add_custom_command(TARGET WormVision POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/libs/hikvision/bin"
-        "$<TARGET_FILE_DIR:WormVision>"
-        COMMENT "Copying Hikvision Runtime DLLs to output directory..."
-    )
+if(BUILD_TESTING)
+    add_subdirectory(tests)
 endif()

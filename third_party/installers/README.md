@@ -6,7 +6,7 @@
 
 ```powershell
 .\scripts\package.ps1 `
-  -Version 1.0.4 `
+  -Version 1.1.0 `
   -MvsRuntimeInstaller .\third_party\installers\MVS_SDK_Runtime_V4.7.0.exe
 ```
 

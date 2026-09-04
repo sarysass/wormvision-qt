@@ -8,16 +8,16 @@
 
 **Tech Stack:** C++17 / Qt6 Widgets, Network, Sql / 现有 Python MicroHunter-Core。
 
-**Spec:** 本次用户需求：本地拍摄、视频库选中分析、参考 wormstudio-cloud-nextjs 的展示逻辑；固定 yolo-sam2-optimized-core；图标 P1；在 wormvision-qt 新分支开发；不要过度编程和验证；可使用 ssh win1。
+**Spec:** 本次用户需求：本地拍摄、视频库选中分析、参考 wormstudio-cloud-nextjs 的展示逻辑；固定 yolo-sam2-optimized-core；图标 P1；在 wormvision-qt 新分支开发；尽量沿用已有基础和风格，不要过度编程和验证。
 
 ## Global Constraints
 
-- 分支 codex/local-video-analysis，直接使用当前 wormvision-qt 目录；不额外创建 worktree，不提交或推送。
+- 分支 `codex/local-analysis-integration`，直接使用当前 wormvision-qt 目录；用户后续已授权整理源码、构建说明后提交并推送此分支。
 - 固定 route_id = yolo-sam2-optimized-core；实验类型默认 worm.crawling，可切换 worm.thrashing，不展示其他算法。
 - 视频和分析结果只在本机处理；不接云上传，不修改或绕过引擎已有许可机制。
-- 保持相机 SDK 采集实现；分析只接收已经完成、存在且非零的视频，不分析正在写入的录像。
+- 保持相机 SDK 采集实现；在停止后的现有轮询中等待大小稳定及 AVI 时长可读，再解除录像忙状态。
 - 复用引擎 metrics.json 的动态中文列名/单位及数值，禁止在 Qt 重新计算或伪造科学指标。
-- 不覆盖 win1 现有脏工作区；在独立目录构建，不读取或复制 secrets 目录。
+- 使用本机现有 SDK/Qt/MSVC 工具链构建，不读取或复制后端 secrets 目录。
 - 必要验证：新边界的定向 Qt 测试、一次 Windows 构建和小规模本地引擎集成冒烟；不跑全量模型矩阵、不做长视频压力测试。
 
 ### Task 1: 本地服务桥接与分析工作台
@@ -25,8 +25,8 @@
 **Files:**
 - Create: src/services/LocalAnalysisService.h/.cpp
 - Create: src/widgets/AnalysisWidget.h/.cpp
-- Create: tests/test_local_analysis.cpp
-- Modify: tests/CMakeLists.txt（只添加新测试）
+- Create: src/utils/AnalysisResults.h/.cpp, tests/test_local_analysis_service.cpp, tests/test_analysis_results.cpp
+- Modify: tests/CMakeLists.txt
 
 **Interfaces:**
 - AnalysisWidget(QWidget *parent = nullptr); void setSelectedVideos(const QStringList &paths); bool hasActiveAnalysis() const;
@@ -34,19 +34,19 @@
 - LocalAnalysisService 负责 QProcess/回环 API/JSON，请求及结果显示不阻塞 UI。
 - Task 2 在主窗加入该 Widget，并连接视频库 analysisRequested(QStringList)。
 
-- [ ] 先编写定向测试，覆盖：提交载荷固定算法且保留中文绝对视频路径/实验类型；正确解析 metrics.json 的 summary.rows[].values 和 videos[].tracks[].values（null 不转 0）；启动失败/错误响应不会留下永久进行中状态。使用可控的本地 HTTP 测试端，避免模拟算法本身。
-- [ ] 启动程序自动发现 appDir/engine/microhunter.exe 或开发目录的 .venv Python + run_cli.py；提供可保存的引擎程序/可选源码入口选择。参数为独立 QStringList，不用 shell 拼接。
-- [ ] 启动 serve --host 127.0.0.1 --port 0 --no-browser --parent-pid <QtPID> --workspace-root <用户数据下分析目录>，读取 MICROHUNTER_SERVE_URL；超时/退出/网络失败提供可恢复错误；关闭仅结束自己启动的进程。
-- [ ] 工作台包含所选视频、实验类型、设备（自动/CUDA/CPU）、可选 mm/px 标定、固定算法说明；开始、取消、刷新及本地历史任务列表。
-- [ ] 结果包括总表/逐视频逐虫表、轨迹图片预览，以及打开标注视频、Excel、PDF和结果目录的入口。用系统播放器打开引擎生成的视频，不新增 Qt Multimedia 或云端逐帧数据适配层。
-- [ ] 以约 2 秒间隔读取任务进度；区分 queued/running/completed/failed/cancelled，结果只有确认 completed 后才显示完成。切换任务后不让旧异步响应覆盖新选择。
-- [ ] 读取实际 API 文档和输出结构，处理启动/未激活/模型缺失错误，禁止展示模拟结果。完成后写简短测试和文件报告，不提交。
+- [x] 定向测试覆盖中文路径的 JSON 请求、真实 summary/track 结构及缺失值、服务启动失败与重试、HTTP 错误及停止后的请求清理。使用可控的本地 HTTP 测试端，不模拟算法本身。
+- [x] 自动发现发行程序或相邻开发目录的 .venv Python + run_cli.py；提供可保存的引擎程序/源码入口设置。参数使用独立 QStringList。
+- [x] 启动回环随机端口服务，传入 parent-pid 与本地 workspace-root；读取服务地址并校验 api_version=1；关闭仅结束自己启动的进程。
+- [x] 工作台包含所选视频、实验类型、设备、可选 mm/px 标定、固定算法说明、开始/取消和本地历史。
+- [x] 结果包括总表/逐视频逐虫表、轨迹图，以及打开标注视频、Excel、PDF和结果目录的入口，复用系统默认程序。
+- [x] 每 2 秒读取任务进度，处理所有终态；切换任务后防止旧异步响应覆盖当前选择。
+- [x] 按实际 API 和输出结构实现；沿用引擎许可状态，显示真实错误，不生成模拟科研结果。
 
 ### Task 2: 视频库集成、图标与构建交付
 
 **Files:**
 - Modify: src/mainwindow.h/.cpp, src/widgets/VideoLibraryWidget.h/.cpp
-- Modify: src/widgets/CaptureWidget.h/.cpp（只增加录像忙状态接口/信号）
+- Modify: src/widgets/CaptureWidget.h/.cpp, src/services/CameraController.h/.cpp（录像忙状态及保存结束检查）
 - Modify: CMakeLists.txt, installer/WormVision.iss, resources/icons/wormvision.png/.ico
 - Create: docs/LOCAL_ANALYSIS.md
 - Modify: tests/test_video_library_widget.cpp
@@ -56,15 +56,37 @@
 - CaptureWidget::recordingBusyChanged(bool) 覆盖录制开始至结束统计/入库阶段，保护文件操作与分析入口。
 - MainWindow 连接 Task 1 的 AnalysisWidget；关闭时若仍有任务，先提醒用户再结束本应用拥有的服务。
 
-- [ ] 用一个定向 UI 测试检查所选视频信号及录制期间禁止提交；替换云上传按钮/右键菜单，删除上传状态显示，不做无关数据库迁移。
-- [ ] 主窗增加“本地分析”页，从视频库选中视频后跳转；捕获录像尚未结束的状态，避免读取正在写入文件。
-- [ ] 原样使用用户 P1 作为 PNG 品牌图，生成匹配的 Windows ICO 资源，保留应用标识和用户数据目录。
-- [ ] CMake 注册新源文件；安装器可携带 build/engine 下完整引擎目录；文档写清开发模式/发行引擎配置、输出位置、许可边界及验证范围。
-- [ ] 使用 win1 独立暂存目录，复用已安装 SDK/Qt/MSVC；先运行新测试再编译应用，最后做短视频单路线必要冒烟。保留未验证硬件事项，不夸大交付状态。
+- [x] 视频库测试覆盖勾选/选中、录制保护及不可读 AVI 拒绝；替换云上传按钮/菜单和状态列，保留现有数据库结构。
+- [x] 主窗增加“本地分析”页，连接视频选择与录像忙状态。
+- [x] 原样使用 P1 PNG，并生成 Windows ICO，保留应用标识和用户数据目录。
+- [x] CMake 注册新文件；安装器可携带完整引擎目录；编写使用及配置说明。
+- [x] Windows 应用构建和三组定向 Qt 测试通过，完成一次集中审查及针对两项修复的窄复核；合成视频接口验证单独记录。
 
 ## Progress
 
-- 分支创建完成，两个原始仓库起始干净。
-- 云端参考只读克隆于 /tmp/wormvision-reference.a6Ztj9/repo；采用页面分区和动态指标表思路，不迁移云接口或数据分片格式。
-- win1 SSH 已实测可用；既有 Qt 仓库脏，禁止覆盖。
-- 决策：按用户要求减少流程开销，仅边界测试和一次最终审查；保留本计划作为进度记录，不创建重复设计文档。
+### 当前 Windows 工作区实施（2026-09-04）
+
+- 本地集成使用新分支 `codex/local-analysis-integration`，基于 `44dca95`，在原有目录工作。
+- 图标来自用户提供的 `p1.png`，原图复制为 PNG 并转换为多尺寸 Windows ICO。
+- 云端参考仓库仅用于只读查看，参考副本不加入当前仓库。
+- 使用已有 Qt/MSVC/MVS 工具链完成本机构建。
+- 按用户要求只做必要验证：请求与结果边界测试、视频库选择及录制保护测试、应用构建，以及可用环境下的一次本地 API 检查；不扩大到算法矩阵。
+- 服务与页面通过简单异步 JSON 接口连接，服务负责进程/回环连接，页面负责固定路线、任务状态与结果展示。工作台公开 `setSelectedVideos`、`setCaptureBusy`、`hasActiveAnalysis` 和 `busyChanged`，供主窗集成。
+- [x] 本地服务及边界测试。
+- [x] 分析工作台及真实指标/产物展示。
+- [x] 视频库、录像状态、主窗和图标集成。
+- [x] 定向测试、构建、最终审查和使用文档。
+
+- 两个原始仓库起始干净；Core 仅准备忽略的运行环境和所需模型权重。
+- 修复审查发现的提交超时孤立任务及录像过早解除忙状态；不增加任务数据库或新的重试框架。
+- 使用现有深色主题在 1280×720 下检查分析页，修复标定控件和滚动布局。
+- 本机真实 API 的启动、目录、任务提交及所需模型前两帧推理已验证，取消请求成功；CPU 单帧耗时数分钟，按用户的轻量验证要求停止，不声称完整产物或标注回放已经实测。
+
+### 源码发布与构建交付
+
+- 用户后续要求上传适当内容，使其他开发者能够从 Git 构建软件。
+- [x] 整理分析功能源文件、资源及必要测试，补充 README 和 vcpkg 清单。
+- [x] 使已有 Windows 构建/打包脚本可配置路径并可靠报告失败。
+- [x] 从暂存源码导出的干净副本完成 Release 构建、三组定向测试及 Inno Setup 安装包生成；构建复用本机已安装的 Qt，SDK 由脚本自动补齐。vcpkg 清单另经依赖解析检查。
+- 发布目标为 `codex/local-analysis-integration` 功能分支，并创建面向 `main` 的草稿 PR 供审阅。
+- 仅上传 Qt 仓库；模型、SDK 二进制、运行环境、录像、机器配置及密钥不加入提交。

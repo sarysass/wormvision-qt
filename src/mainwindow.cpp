@@ -1,11 +1,14 @@
 ﻿#include "mainwindow.h"
 #include "widgets/CaptureWidget.h"
+#include "widgets/AnalysisWidget.h"
 #include "widgets/VideoLibraryWidget.h"
 #include <QDebug>
+#include <QCloseEvent>
 #include <QEasingCurve>
 #include <QFile>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_centralStack(nullptr), m_captureWidget(nullptr),
@@ -31,6 +34,9 @@ void MainWindow::setupUI() {
   m_libraryWidget = new VideoLibraryWidget(this);
   m_centralStack->addWidget(m_libraryWidget);
 
+  m_analysisWidget = new AnalysisWidget(this);
+  m_centralStack->addWidget(m_analysisWidget);
+
   // 默认显示采集视图
   m_centralStack->setCurrentWidget(m_captureWidget);
 }
@@ -47,6 +53,9 @@ void MainWindow::setupToolBar() {
   m_libraryAction = m_toolBar->addAction("视频库");
   m_libraryAction->setCheckable(true);
 
+  m_analysisAction = m_toolBar->addAction("本地分析");
+  m_analysisAction->setCheckable(true);
+
   m_toolBar->addSeparator();
 
   m_themeAction = m_toolBar->addAction("切换主题");
@@ -58,18 +67,32 @@ void MainWindow::setupConnections() {
   connect(m_libraryAction, &QAction::triggered, this,
           &MainWindow::showLibraryView);
   connect(m_themeAction, &QAction::triggered, this, &MainWindow::toggleTheme);
+  connect(m_analysisAction, &QAction::triggered, this, &MainWindow::showAnalysisView);
+  connect(m_libraryWidget, &VideoLibraryWidget::analysisRequested, this,
+          [this](const QStringList &paths) {
+            m_analysisWidget->setSelectedVideos(paths);
+            showAnalysisView();
+          });
+  connect(m_captureWidget, &CaptureWidget::recordingBusyChanged,
+          m_libraryWidget, &VideoLibraryWidget::setCaptureBusy);
+  connect(m_captureWidget, &CaptureWidget::recordingBusyChanged,
+          m_analysisWidget, &AnalysisWidget::setCaptureBusy);
+  connect(m_analysisWidget, &AnalysisWidget::busyChanged,
+          m_libraryWidget, &VideoLibraryWidget::setAnalysisBusy);
 }
 
 void MainWindow::showCaptureView() {
   m_centralStack->setCurrentWidget(m_captureWidget);
   m_captureAction->setChecked(true);
   m_libraryAction->setChecked(false);
+  m_analysisAction->setChecked(false);
 }
 
 void MainWindow::showLibraryView() {
   m_centralStack->setCurrentWidget(m_libraryWidget);
   m_captureAction->setChecked(false);
   m_libraryAction->setChecked(true);
+  m_analysisAction->setChecked(false);
 
   // 每次切到视频库都重扫目录 + 重读 DB（兜底：即使 addRecording 因为 SDK flush
   // 时序失败，磁盘上的真文件也会被 scanVideoFolder 拾起来）
@@ -94,6 +117,26 @@ void MainWindow::showLibraryView() {
 void MainWindow::toggleTheme() {
   m_isDarkTheme = !m_isDarkTheme;
   loadStyleSheet(m_isDarkTheme ? "dark" : "light");
+}
+
+void MainWindow::showAnalysisView() {
+  m_centralStack->setCurrentWidget(m_analysisWidget);
+  m_captureAction->setChecked(false);
+  m_libraryAction->setChecked(false);
+  m_analysisAction->setChecked(true);
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+  if (m_captureWidget->isRecordingBusy() || m_analysisWidget->hasActiveAnalysis()) {
+    const auto answer = QMessageBox::question(
+        this, "任务尚未结束", "录像保存或本地分析仍在进行。确定结束任务并退出吗？",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+      event->ignore();
+      return;
+    }
+  }
+  QMainWindow::closeEvent(event);
 }
 
 void MainWindow::loadStyleSheet(const QString &theme) {

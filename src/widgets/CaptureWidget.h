@@ -30,9 +30,11 @@ class CaptureWidget : public QWidget {
 public:
   explicit CaptureWidget(QWidget *parent = nullptr);
   ~CaptureWidget();
+  bool isRecordingBusy() const { return m_recordingBusy; }
 
 signals:
   void recordingStopped();
+  void recordingBusyChanged(bool busy);
 
 private slots:
   void onStartPreviewClicked();
@@ -60,6 +62,7 @@ protected:
 private:
   void setupUI();
   void setupConnections();
+  void setRecordingBusy(bool busy);
 
   QWidget *m_videoContainer = nullptr;
   VideoDisplayWidget *m_videoDisplay = nullptr;
@@ -98,8 +101,9 @@ private:
   bool m_isPreviewActive = false;
   int m_selectedDeviceIndex = -1;
   QString m_lastCameraError;
-  // 记录最近一次开始录制的路径，stats 信号（延迟 1.2s）回来时用它入库
+  // 保存结束统计回来前禁止开始下一段，保持路径与延迟入库对应。
   QString m_lastRecordingPath;
+  bool m_recordingBusy = false;
 };
 
 #endif // CAPTUREWIDGET_H

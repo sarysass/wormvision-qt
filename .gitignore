@@ -53,6 +53,14 @@ Thumbs.db
 
 # vcpkg (use system vcpkg instead)
 vcpkg_installed/
+.venv/
+__pycache__/
+weights/
+secrets/
+*.pt
+*.mhw
+recordings/
+snapshots/
 
 # Generated
 CMakeFiles/

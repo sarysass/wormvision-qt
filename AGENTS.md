@@ -2,6 +2,8 @@
 
 This file provides guidance for agentic coding assistants working on the WormVision-Qt project.
 
+Current build prerequisites, dependency setup, engine configuration and packaging commands are maintained in [README.md](README.md). Follow that guide when older notes below differ.
+
 ## Project Overview
 
 WormVision-Qt is a Qt6 C++17 desktop application for industrial camera capture and video management using Hikvision MVS SDK. The project focuses on high-performance zero-copy rendering and stability for worm behavior analysis experiments.
@@ -18,7 +20,7 @@ Configures CMake with vcpkg toolchain, compiles Release build with Ninja, and de
 ```powershell
 .\scripts\configure.ps1
 ```
-Runs CMake configuration only (cleans build directory first).
+Runs CMake configuration only; preserves the build directory. Supports the same path options as build.ps1.
 
 ### Build Only
 ```powershell
@@ -32,12 +34,12 @@ Requires prior CMake configuration.
 ```
 
 ### Build Configuration
-- **CMake**: 3.31+
+- **CMake**: 3.22+ (3.31 used for verification)
 - **Generator**: Ninja
-- **Toolchain**: vcpkg (`C:/vcpkg/scripts/buildsystems/vcpkg.cmake`)
+- **Toolchain**: vcpkg (`VCPKG_ROOT` or `-VcpkgRoot`, manifest in vcpkg.json)
 - **Build Type**: Release
 - **C++ Standard**: C++17
-- **Qt**: 6.8 (via vcpkg)
+- **Qt**: 6.10 (via the pinned vcpkg baseline)
 - **Visual Studio**: MSVC with x64 architecture
 
 ## Code Style Guidelines
@@ -293,7 +295,7 @@ src/
 └── utils/
     └── ThemeManager.h/.cpp     # Theme switching (singleton)
 
-tests/                          # Test files (currently empty)
+tests/                          # Qt Test suites registered with CTest
 scripts/
 ├── build.ps1                   # Full build script
 └── configure.ps1               # CMake configuration only
@@ -307,7 +309,7 @@ Development/                    # Hikvision SDK documentation (SOURCE OF TRUTH)
 
 ## Testing
 
-Currently no automated testing framework is configured. Manual testing is performed by:
+Qt Test suites are registered with CTest; use the focused commands in README.md after building. Hardware testing is performed by:
 1. Running `.\build\WormVision.exe`
 2. Testing camera connection and preview
 3. Testing video recording and playback

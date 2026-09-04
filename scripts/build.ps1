@@ -1,120 +1,44 @@
+﻿param(
+    [string]$VcpkgRoot = "",
+    [string]$BuildDir = "build",
+    [string]$MvsRuntimeDir = "",
+    [string]$MvsLibDir = "",
+    [string]$CMakePath = "",
+    [string]$NinjaPath = "",
+    [switch]$UseInstalledDependencies
+)
+
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-common.ps1")
 
-# Use project root as base (Phase 5: removed hardcoded d:\projects path)
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-$BuildDir = Join-Path $ProjectRoot "build"
-$LibsBinDir = Join-Path $ProjectRoot "libs\hikvision\bin"
+$build = Initialize-WormVisionBuild @PSBoundParameters
+Invoke-WormVisionConfigure $build
 
-# ============================================================================
-# Step 0: Sync Hikvision MVS SDK DLLs to libs/hikvision/bin
-#   .gitignore blocks *.dll/*.lib so after a fresh clone libs/hikvision/bin
-#   is empty -> auto-copy from the MVS install directory.
-#   IMPORTANT: must include the ThirdParty subdir (avutil/swscale/libwinpthread)
-#   otherwise MV_CC_InputOneFrame returns 0x8000000c (MV_E_LOAD_LIBRARY) and
-#   recordings come out 0 bytes.
-# ============================================================================
-$MvsRuntimeDir = "C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64"
-$MvsLibDir = "C:\Program Files (x86)\MVS\Development\Libraries\win64"
-$keyDlls = @("MvCameraControl.dll", "MvRender.dll", "MediaProcess.dll",
-             "FormatConversion.dll", "MVGigEVisionSDK.dll", "MvUsb3vTL.dll",
-             "SuperRender.dll", "swscale-9.dll", "avutil-60.dll",
-             "libwinpthread-1.dll")
-$missingDlls = $keyDlls | Where-Object { -not (Test-Path (Join-Path $LibsBinDir $_)) }
+Write-Host "开始编译..."
+Invoke-BuildCommand $build.CMake @("--build", $build.BuildDir, "--config", "Release")
 
-if ($missingDlls.Count -gt 0) {
-    Write-Host "Syncing Hikvision SDK DLLs (missing: $($missingDlls.Count)) ..."
-    if (-not (Test-Path $LibsBinDir)) {
-        New-Item -ItemType Directory -Path $LibsBinDir -Force | Out-Null
-    }
-    if (Test-Path $MvsRuntimeDir) {
-        Copy-Item "$MvsRuntimeDir\*.dll" -Destination $LibsBinDir -Force
-        if (Test-Path "$MvsRuntimeDir\ThirdParty") {
-            Copy-Item "$MvsRuntimeDir\ThirdParty\*.dll" -Destination $LibsBinDir -Force
-        }
-        if (Test-Path "$MvsLibDir\MvCameraControl.lib") {
-            Copy-Item "$MvsLibDir\MvCameraControl.lib" -Destination $LibsBinDir -Force
-        }
-        Write-Host "SDK DLLs synced."
-    } else {
-        Write-Error "MVS SDK not found at $MvsRuntimeDir. Install MVS client first."
-        exit 1
-    }
+$qtRoot = Join-Path $build.InstalledDir "x64-windows"
+$deployCandidates = @(
+    (Join-Path $qtRoot "tools\Qt6\bin\windeployqt.exe"),
+    (Join-Path $qtRoot "tools\Qt6\windeployqt.exe")
+)
+$windeployqt = $deployCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+if (-not $windeployqt) {
+    throw "未找到 windeployqt.exe：$qtRoot\tools\Qt6。请检查 vcpkg qtbase 安装。"
 }
 
-# 1. Locate Visual Studio
-$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$installPath = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1).Trim()
-
-if (-not $installPath) {
-    Write-Error "Error: Visual Studio C++ tools not found. Please install MSVC build tools."
-    exit 1
+$exePath = Join-Path $build.BuildDir "WormVision.exe"
+if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+    throw "编译输出不存在：$exePath"
 }
+$env:Path = "$(Join-Path $qtRoot 'bin');$(Split-Path -Parent $windeployqt);$env:Path"
+Write-Host "部署 Qt 运行依赖..."
+Invoke-BuildCommand $windeployqt @($exePath, "--release", "--no-translations", "--no-opengl-sw")
 
-Write-Host "Found Visual Studio at: $installPath"
-
-# 2. Load dev environment
-$devShellModule = "$installPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-if (Test-Path $devShellModule) {
-    Import-Module $devShellModule
-    Enter-VsDevShell -VsInstallPath $installPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
-} else {
-    Write-Error "DevShell module not found at $devShellModule"
-    exit 1
+$sqliteDll = Join-Path $qtRoot "bin\sqlite3.dll"
+if (-not (Test-Path -LiteralPath $sqliteDll -PathType Leaf)) {
+    throw "未找到 SQLite 运行库：$sqliteDll。请检查 vcpkg qtbase 的 sql-sqlite 功能。"
 }
-
-# 3. Configure tool paths (CMake & Ninja)
-$ninjaPath = "C:\vcpkg\downloads\tools\ninja-1.13.2-windows"
-$cmakePath = "C:\vcpkg\downloads\tools\cmake-3.31.10-windows\cmake-3.31.10-windows-x86_64\bin"
-$env:Path = "$ninjaPath;$cmakePath;$env:Path"
-
-Set-Location $ProjectRoot
-
-# 4. Run CMake configure if build directory doesn't have build.ninja yet
-if (-not (Test-Path (Join-Path $BuildDir "build.ninja"))) {
-    Write-Host "Configuring CMake..."
-    cmake -B $BuildDir -S $ProjectRoot -G Ninja `
-        -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
-        -DCMAKE_BUILD_TYPE=Release `
-        -DCMAKE_MAKE_PROGRAM="$ninjaPath/ninja.exe"
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "CMake configuration failed."
-        exit 1
-    }
-}
-
-# 5. Build
-Write-Host "Starting build..."
-cmake --build $BuildDir --config Release
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Build successful!"
-
-    # 6. Run windeployqt
-    $windeployqt = "C:\vcpkg\installed\x64-windows\tools\Qt6\bin\windeployqt.exe"
-    $exePath = Join-Path $BuildDir "WormVision.exe"
-
-    if (Test-Path $windeployqt) {
-        Write-Host "Deploying Qt dependencies..."
-        # windeployqt 即使全部部署成功也会在 stderr 报 translation warning，
-        # 这里临时关掉 errorAction stop 否则后续步骤会被跳过
-        $oldEAP = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        & $windeployqt $exePath --no-translations --no-opengl-sw 2>&1 | Out-Host
-        $ErrorActionPreference = $oldEAP
-
-        # qsqlite.dll plugin needs sqlite3.dll next to the exe
-        $sqliteDll = "C:\vcpkg\installed\x64-windows\bin\sqlite3.dll"
-        if (Test-Path $sqliteDll) {
-            Copy-Item $sqliteDll $BuildDir -Force
-            Write-Host "Copied sqlite3.dll"
-        } else {
-            Write-Warning "sqlite3.dll not found in vcpkg bin"
-        }
-    } else {
-        Write-Warning "windeployqt not found at $windeployqt"
-    }
-
-} else {
-    Write-Error "Build failed."
-}
+Copy-Item -LiteralPath $sqliteDll -Destination $build.BuildDir -Force
+Write-Host "编译和依赖部署完成：$exePath"

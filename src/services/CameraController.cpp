@@ -1,5 +1,6 @@
 #include "CameraController.h"
 #include "../utils/RecordingDiagnostics.h"
+#include "../utils/VideoUtils.h"
 #include <MvCameraControl.h>
 #include <QDebug>
 #include <QFileInfo>
@@ -554,8 +555,8 @@ void CameraController::stopRecording() {
   qDebug() << "录制已停止，轮询 SDK flush AVI 索引:" << path;
 
   // 关键修复：MV_CC_StopRecord 返回后 SDK 仍在异步 flush AVI 头/索引/尾。
-  // 用轮询而不是固定延迟：每 300ms 查一次文件大小，size>0 立即 emit；
-  // 最多等 20 * 300ms = 6 秒兜底。
+  // 每 300ms 查一次；大小连续稳定且 AVI 头可解析出时长才继续入库。
+  // 最多等待约 6 秒，超时明确报告保存尚未确认。
   const qint64 ok = m_recordInputOk.load();
   const qint64 fail = m_recordInputFail.load();
   const qint64 convFail = m_recordConvertFail.load();
@@ -568,22 +569,30 @@ void CameraController::pollFlushAndEmitStats(const QString &path, qint64 ok,
                                              qint64 fail, qint64 convFail,
                                              quint32 lastErr,
                                              quint32 actualPixel,
-                                             int retriesLeft) {
+                                             int retriesLeft,
+                                             qint64 previousSize,
+                                             int stableChecks) {
   const qint64 size = QFileInfo(path).size();
-  if (size > 0 || retriesLeft <= 0) {
+  const int nextStableChecks =
+      size > 0 && size == previousSize ? stableChecks + 1 : 0;
+  const bool finalized = nextStableChecks >= 2 &&
+                         VideoUtils::parseVideoDurationFromFile(path) > 0.0;
+  if (finalized || retriesLeft <= 0) {
+    const qint64 reportedSize = finalized ? size : -1;
     qInfo() << RecordingDiagnostics::formatRecordingStats(
-                   ok + fail + convFail, ok, fail + convFail, size)
+                   ok + fail + convFail, ok, fail + convFail, reportedSize)
             << "convFail=" << convFail << "lastErr=0x"
             << QString::number(lastErr, 16) << "polled" << (20 - retriesLeft)
             << "times";
-    emit recordingStats(ok + fail + convFail, ok, fail, size, lastErr,
+    emit recordingStats(ok + fail + convFail, ok, fail, reportedSize, lastErr,
                         actualPixel, convFail);
     return;
   }
   QTimer::singleShot(300, this, [this, path, ok, fail, convFail, lastErr,
-                                 actualPixel, retriesLeft]() {
+                                 actualPixel, retriesLeft, size,
+                                 nextStableChecks]() {
     pollFlushAndEmitStats(path, ok, fail, convFail, lastErr, actualPixel,
-                          retriesLeft - 1);
+                          retriesLeft - 1, size, nextStableChecks);
   });
 }
 

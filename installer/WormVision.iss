@@ -1,14 +1,17 @@
 ; WormVision Installer (Inno Setup 6)
 ; 编译方式：ISCC.exe installer\WormVision.iss
-; 输出：installer\Output\WormVision-Setup-1.0.0.exe
+; 输出：installer\Output\WormVision-Setup-1.1.0.exe
 
 #define MyAppName "WormVision"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #endif
 #define MyAppPublisher "WormLab"
 #define MyAppURL "https://github.com/sarysass/wormvision-qt"
 #define MyAppExeName "WormVision.exe"
+#ifndef MyBuildDir
+#define MyBuildDir "..\build"
+#endif
 #ifndef MvsRuntimeArgs
 #define MvsRuntimeArgs "/S"
 #endif
@@ -46,26 +49,29 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Files]
 ; ---- 主程序 + Qt 插件目录（递归打包整个 build 目录）----
-Source: "..\build\WormVision.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\*.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\sqlite3.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\build\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs
-Source: "..\build\sqldrivers\*"; DestDir: "{app}\sqldrivers"; Flags: ignoreversion recursesubdirs
-Source: "..\build\imageformats\*"; DestDir: "{app}\imageformats"; Flags: ignoreversion recursesubdirs
-Source: "..\build\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion recursesubdirs
-Source: "..\build\tls\*"; DestDir: "{app}\tls"; Flags: ignoreversion recursesubdirs
-Source: "..\build\networkinformation\*"; DestDir: "{app}\networkinformation"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
-Source: "..\build\generic\*"; DestDir: "{app}\generic"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+Source: "{#MyBuildDir}\WormVision.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyBuildDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyBuildDir}\sqlite3.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#MyBuildDir}\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs
+Source: "{#MyBuildDir}\sqldrivers\*"; DestDir: "{app}\sqldrivers"; Flags: ignoreversion recursesubdirs
+Source: "{#MyBuildDir}\imageformats\*"; DestDir: "{app}\imageformats"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+Source: "{#MyBuildDir}\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+Source: "{#MyBuildDir}\tls\*"; DestDir: "{app}\tls"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+Source: "{#MyBuildDir}\networkinformation\*"; DestDir: "{app}\networkinformation"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+Source: "{#MyBuildDir}\generic\*"; DestDir: "{app}\generic"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 ; 海康 SDK ini 配置
-Source: "..\build\CommonParameters.ini"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#MyBuildDir}\CommonParameters.ini"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; 本地分析引擎：复制完整发行目录，包含 _internal 与加密权重。
+Source: "{#MyBuildDir}\engine\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 ; VC++ Redistributable 提示文件
-Source: "..\build\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall skipifsourcedoesntexist
+Source: "{#MyBuildDir}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall skipifsourcedoesntexist
 ; 海康 MVS SDK Runtime 组件包（可选，由打包脚本通过 /DMvsRuntimeInstaller 注入）
 #ifdef MvsRuntimeInstaller
 Source: "{#MvsRuntimeInstaller}"; DestDir: "{tmp}"; DestName: "MVS_SDK_Runtime_Setup.exe"; Flags: deleteafterinstall
 #endif
 ; 文档
 Source: "..\docs\DLL_DEPENDENCIES.md"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\docs\LOCAL_ANALYSIS.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

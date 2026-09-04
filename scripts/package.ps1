@@ -1,9 +1,13 @@
 param(
-    [string]$Version = "1.0.0",
+    [string]$Version = "1.1.0",
     [string]$MvsRuntimeInstaller = "",
     [string]$MvsRuntimeArgs = "/S",
     [string]$InnoSetupPath = "",
-    [switch]$SkipBuild
+    [string]$BuildDir = "build",
+    [string]$VcpkgRoot = "",
+    [switch]$UseInstalledDependencies,
+    [switch]$SkipBuild,
+    [switch]$NoDesktopCopy
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +16,10 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $installerScript = Join-Path $projectRoot "installer\WormVision.iss"
 $outputDir = Join-Path $projectRoot "installer\Output"
 $desktopDir = [Environment]::GetFolderPath("Desktop")
+if (-not [IO.Path]::IsPathRooted($BuildDir)) {
+    $BuildDir = Join-Path $projectRoot $BuildDir
+}
+$BuildDir = [IO.Path]::GetFullPath($BuildDir)
 
 Set-Location $projectRoot
 
@@ -37,10 +45,11 @@ function Find-InnoCompiler {
 }
 
 if (-not $SkipBuild) {
-    & (Join-Path $PSScriptRoot "build.ps1")
+    & (Join-Path $PSScriptRoot "build.ps1") -BuildDir $BuildDir `
+        -VcpkgRoot $VcpkgRoot -UseInstalledDependencies:$UseInstalledDependencies
 }
 
-$appExe = Join-Path $projectRoot "build\WormVision.exe"
+$appExe = Join-Path $BuildDir "WormVision.exe"
 if (-not (Test-Path $appExe)) {
     throw "Missing $appExe. Build the Release binary in a Windows/MSVC environment first."
 }
@@ -50,18 +59,19 @@ if ($MvsRuntimeInstaller -and -not (Test-Path $MvsRuntimeInstaller)) {
 }
 
 $iscc = Find-InnoCompiler $InnoSetupPath
-$args = @(
+$compilerArgs = @(
     "/DMyAppVersion=$Version",
+    "/DMyBuildDir=$BuildDir",
     "/DMvsRuntimeArgs=$MvsRuntimeArgs"
 )
 
 if ($MvsRuntimeInstaller) {
-    $args += "/DMvsRuntimeInstaller=$MvsRuntimeInstaller"
+    $compilerArgs += "/DMvsRuntimeInstaller=$((Resolve-Path -LiteralPath $MvsRuntimeInstaller).Path)"
 }
 
-$args += $installerScript
+$compilerArgs += $installerScript
 
-& $iscc $args
+& $iscc $compilerArgs
 
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup packaging failed."
@@ -72,6 +82,9 @@ if (-not (Test-Path $setupPath)) {
     throw "Setup file was not found after packaging: $setupPath"
 }
 
-$desktopSetupPath = Join-Path $desktopDir "WormVision-Setup-$Version.exe"
-Copy-Item $setupPath $desktopSetupPath -Force
-Write-Host "Setup generated: $desktopSetupPath"
+Write-Host "Setup generated: $setupPath"
+if (-not $NoDesktopCopy -and $desktopDir) {
+    $desktopSetupPath = Join-Path $desktopDir "WormVision-Setup-$Version.exe"
+    Copy-Item -LiteralPath $setupPath -Destination $desktopSetupPath -Force
+    Write-Host "Desktop copy: $desktopSetupPath"
+}

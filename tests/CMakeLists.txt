@@ -16,6 +16,11 @@ function(wormvision_add_test test_name)
         ${ARG_LIBS}
     )
     add_test(NAME ${test_name} COMMAND ${test_name})
+    # 从普通终端运行 CTest 也能找到 Qt DLL 和 build.ps1 部署的插件。
+    set_tests_properties(${test_name} PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${CMAKE_BINARY_DIR};QT_PLUGIN_PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
+    )
 endfunction()
 
 # === Phase 0 smoke test ===
@@ -77,11 +82,24 @@ wormvision_add_test(test_video_library_widget
         ${CMAKE_SOURCE_DIR}/src/widgets/VideoLibraryWidget.cpp
         ${CMAKE_SOURCE_DIR}/src/data/VideoLibraryService.cpp
         ${CMAKE_SOURCE_DIR}/src/data/DatabaseManager.cpp
-        ${CMAKE_SOURCE_DIR}/src/services/CloudService.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
         ${CMAKE_SOURCE_DIR}/src/utils/VideoUtils.cpp
     LIBS Qt6::Widgets Qt6::Sql Qt6::Network
 )
 set_tests_properties(test_video_library_widget PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM_PLUGIN_PATH=${CMAKE_BINARY_DIR}/platforms"
+)
+
+wormvision_add_test(test_analysis_results
+    SOURCES
+        test_analysis_results.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AnalysisResults.cpp
+)
+
+wormvision_add_test(test_local_analysis_service
+    SOURCES
+        test_local_analysis_service.cpp
+        ${CMAKE_SOURCE_DIR}/src/services/LocalAnalysisService.cpp
+        ${CMAKE_SOURCE_DIR}/src/utils/AppPaths.cpp
+    LIBS Qt6::Network
 )

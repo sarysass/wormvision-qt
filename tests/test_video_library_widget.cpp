@@ -12,6 +12,8 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QtEndian>
+#include <cstring>
 
 class TestVideoLibraryWidget : public QObject {
   Q_OBJECT
@@ -38,8 +40,20 @@ private:
     if (!file.open(QIODevice::WriteOnly)) {
       return false;
     }
-    file.write("not-a-real-avi-but-non-empty");
+    QByteArray avi(88, '\0');
+    std::memcpy(avi.data(), "RIFF", 4);
+    std::memcpy(avi.data() + 8, "AVI ", 4);
+    std::memcpy(avi.data() + 12, "avih", 4);
+    qToLittleEndian<quint32>(56, reinterpret_cast<uchar *>(avi.data() + 16));
+    qToLittleEndian<quint32>(33333, reinterpret_cast<uchar *>(avi.data() + 20));
+    qToLittleEndian<quint32>(30, reinterpret_cast<uchar *>(avi.data() + 36));
+    file.write(avi);
     return true;
+  }
+
+  bool writeInvalidBytes(const QString &path) {
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write("incomplete") > 0;
   }
 
 private slots:
@@ -81,6 +95,72 @@ private slots:
     QVERIFY(table != nullptr);
     QCOMPARE(table->rowCount(), 1);
     QCOMPARE(table->item(0, 1)->text(), QString("current.avi"));
+  }
+
+  void analysis_uses_checked_videos_then_selected_rows() {
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    AppPaths::setStorageRootDir(root.path());
+    const QString first = QDir(AppPaths::recordingsDir()).filePath("中文录像.avi");
+    const QString second = QDir(AppPaths::recordingsDir()).filePath("second.avi");
+    QVERIFY(writeBytes(first));
+    QVERIFY(writeBytes(second));
+    VideoLibraryWidget widget;
+    auto *table = widget.findChild<QTableWidget *>();
+    QCOMPARE(table->rowCount(), 2);
+    QSignalSpy requested(&widget, SIGNAL(analysisRequested(QStringList)));
+    QVERIFY(requested.isValid());
+    table->selectRow(1);
+    table->item(0, 0)->setCheckState(Qt::Checked);
+    const QString checkedPath = table->item(0, 0)->data(Qt::UserRole + 1).toString();
+    QVERIFY(QMetaObject::invokeMethod(&widget, "requestAnalysis"));
+    QCOMPARE(requested.count(), 1);
+    QCOMPARE(requested.takeFirst().at(0).toStringList(), QStringList{checkedPath});
+    table->item(0, 0)->setCheckState(Qt::Unchecked);
+    const QString selectedPath = table->item(1, 0)->data(Qt::UserRole + 1).toString();
+    QVERIFY(QMetaObject::invokeMethod(&widget, "requestAnalysis"));
+    QCOMPARE(requested.takeFirst().at(0).toStringList(), QStringList{selectedPath});
+  }
+
+  void recording_blocks_analysis_and_preserves_pending_file() {
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    AppPaths::setStorageRootDir(root.path());
+    const QString path = QDir(AppPaths::recordingsDir()).filePath("pending.avi");
+    QVERIFY(writeBytes(path));
+    VideoLibraryWidget widget;
+    auto *table = widget.findChild<QTableWidget *>();
+    table->selectRow(0);
+    QSignalSpy requested(&widget, SIGNAL(analysisRequested(QStringList)));
+    QVERIFY(requested.isValid());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "setCaptureBusy", Q_ARG(bool, true)));
+    QFile pending(path);
+    QVERIFY(pending.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    pending.close();
+    widget.rescanAndRefresh();
+    QVERIFY(QFileInfo::exists(path));
+    QVERIFY(QMetaObject::invokeMethod(&widget, "requestAnalysis"));
+    QCOMPARE(requested.count(), 0);
+    QVERIFY(writeBytes(path));
+    QVERIFY(QMetaObject::invokeMethod(&widget, "setCaptureBusy", Q_ARG(bool, false)));
+    table->selectRow(0);
+    QVERIFY(QMetaObject::invokeMethod(&widget, "requestAnalysis"));
+    QCOMPARE(requested.count(), 1);
+  }
+
+  void analysis_rejects_incomplete_avi() {
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    AppPaths::setStorageRootDir(root.path());
+    const QString path = QDir(AppPaths::recordingsDir()).filePath("incomplete.avi");
+    QVERIFY(writeInvalidBytes(path));
+    VideoLibraryWidget widget;
+    auto *table = widget.findChild<QTableWidget *>();
+    QCOMPARE(table->rowCount(), 1);
+    table->selectRow(0);
+    QSignalSpy requested(&widget, SIGNAL(analysisRequested(QStringList)));
+    QVERIFY(QMetaObject::invokeMethod(&widget, "requestAnalysis"));
+    QCOMPARE(requested.count(), 0);
   }
 };
 
