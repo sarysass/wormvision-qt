@@ -1,6 +1,6 @@
 {
   "name": "wormvision",
-  "version-string": "1.1.2",
+  "version-string": "1.1.3",
   "builtin-baseline": "8f095fa0342454181dc10f1b9c176c19b356ee67",
   "dependencies": [
     {

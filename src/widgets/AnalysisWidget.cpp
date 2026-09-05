@@ -7,6 +7,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDirIterator>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -23,6 +24,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSet>
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QSplitter>
@@ -33,6 +35,11 @@
 #include <QVBoxLayout>
 
 namespace {
+bool isVideoFile(const QFileInfo &file) {
+  const QString extension = file.suffix().toLower();
+  return extension == "avi" || extension == "mp4";
+}
+
 QString runPath(const QString &id) {
   return "/api/runs/" + QString::fromLatin1(QUrl::toPercentEncoding(id));
 }
@@ -142,11 +149,39 @@ void AnalysisWidget::setupUI() {
   leftLayout->setContentsMargins(0, 0, 8, 0);
   auto *input = new QGroupBox("待分析视频", left);
   auto *inputLayout = new QVBoxLayout(input);
-  inputLayout->addWidget(wrappedLabel("在视频库勾选视频后，点击“本地分析”。", input));
+  inputLayout->addWidget(wrappedLabel("选择本机视频或整个文件夹，也可从视频库添加。", input));
+  auto *sourceButtons = new QHBoxLayout;
+  m_addVideos = new QPushButton("选择视频…", input);
+  m_addVideos->setObjectName("addAnalysisVideos");
+  m_addFolder = new QPushButton("选择文件夹…", input);
+  m_addFolder->setObjectName("addAnalysisFolder");
+  sourceButtons->addWidget(m_addVideos);
+  sourceButtons->addWidget(m_addFolder);
+  inputLayout->addLayout(sourceButtons);
+  m_chooseLibrary = new QPushButton("从视频库选择", input);
+  inputLayout->addWidget(m_chooseLibrary);
+  inputLayout->addWidget(wrappedLabel("AVI / MP4 · 文件夹包含子文件夹中的视频", input));
   m_videos = new QListWidget(input);
-  m_videos->setMinimumHeight(90);
-  m_videos->setMaximumHeight(180);
+  m_videos->setObjectName("analysisInputVideos");
+  m_videos->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_videos->setTextElideMode(Qt::ElideMiddle);
+  m_videos->setMinimumHeight(110);
+  m_videos->setMaximumHeight(210);
   inputLayout->addWidget(m_videos);
+  auto *selectionButtons = new QHBoxLayout;
+  m_removeVideos = new QPushButton("移除选中", input);
+  m_removeVideos->setObjectName("removeAnalysisVideos");
+  m_clearVideos = new QPushButton("清空列表", input);
+  m_clearVideos->setObjectName("clearAnalysisVideos");
+  m_removeVideos->setToolTip("仅从待分析列表移除，不删除本机文件");
+  m_clearVideos->setToolTip(m_removeVideos->toolTip());
+  selectionButtons->addWidget(m_removeVideos);
+  selectionButtons->addWidget(m_clearVideos);
+  inputLayout->addLayout(selectionButtons);
+  m_inputStatus = wrappedLabel("", input);
+  m_inputStatus->setObjectName("analysisInputStatus");
+  m_inputStatus->hide();
+  inputLayout->addWidget(m_inputStatus);
   m_captureStatus = wrappedLabel("", input);
   inputLayout->addWidget(m_captureStatus);
   auto *form = new QFormLayout;
@@ -256,6 +291,23 @@ void AnalysisWidget::setupUI() {
     table->horizontalHeader()->setStretchLastSection(true);
   }
   connect(m_calibrated, &QCheckBox::toggled, this, &AnalysisWidget::updateControls);
+  connect(m_addVideos, &QPushButton::clicked, this, &AnalysisWidget::chooseVideos);
+  connect(m_addFolder, &QPushButton::clicked, this, &AnalysisWidget::chooseFolder);
+  connect(m_chooseLibrary, &QPushButton::clicked, this, &AnalysisWidget::videoLibraryRequested);
+  connect(m_videos, &QListWidget::itemSelectionChanged, this, &AnalysisWidget::updateControls);
+  connect(m_removeVideos, &QPushButton::clicked, this, [this]() {
+    if (hasActiveAnalysis()) return;
+    const auto selected = m_videos->selectedItems();
+    for (QListWidgetItem *item : selected) delete m_videos->takeItem(m_videos->row(item));
+    m_inputStatus->hide();
+    updateControls();
+  });
+  connect(m_clearVideos, &QPushButton::clicked, this, [this]() {
+    if (hasActiveAnalysis()) return;
+    m_videos->clear();
+    m_inputStatus->hide();
+    updateControls();
+  });
   connect(m_configure, &QPushButton::clicked, this, &AnalysisWidget::configureEngine);
   connect(m_activate, &QPushButton::clicked, this, &AnalysisWidget::activateLicense);
   connect(m_start, &QPushButton::clicked, this, &AnalysisWidget::startAnalysis);
@@ -292,17 +344,76 @@ void AnalysisWidget::showEvent(QShowEvent *event) {
   if (!m_service->isReady() && !m_service->isStarting()) m_service->start();
 }
 
-void AnalysisWidget::setSelectedVideos(const QStringList &paths) {
-  m_videos->clear();
-  QStringList seen;
+void AnalysisWidget::chooseVideos() {
+  if (hasActiveAnalysis()) return;
+  const QStringList paths = QFileDialog::getOpenFileNames(
+      this, "选择待分析视频（可多选）", m_lastInputDirectory,
+      "视频文件 (*.avi *.mp4 *.AVI *.MP4)");
+  if (paths.isEmpty()) return;
+  m_lastInputDirectory = QFileInfo(paths.first()).absolutePath();
+  addVideos(paths);
+}
+
+void AnalysisWidget::chooseFolder() {
+  if (hasActiveAnalysis()) return;
+  const QString folder = QFileDialog::getExistingDirectory(
+      this, "选择视频文件夹（包含子文件夹）", m_lastInputDirectory);
+  if (folder.isEmpty()) return;
+  m_lastInputDirectory = folder;
+  QStringList paths;
+  // 不跟随目录符号链接，避免循环；视频仍逐个保留绝对路径提交给引擎。
+  QDirIterator files(folder, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+  while (files.hasNext()) {
+    files.next();
+    if (isVideoFile(files.fileInfo())) paths.append(files.filePath());
+  }
+  paths.sort(Qt::CaseInsensitive);
+  if (paths.isEmpty()) {
+    m_inputStatus->setText("该文件夹及子文件夹中没有找到 AVI / MP4 视频，原列表已保留。");
+    m_inputStatus->show();
+    return;
+  }
+  addVideos(paths);
+}
+
+void AnalysisWidget::addVideos(const QStringList &paths) {
+  if (hasActiveAnalysis() || paths.isEmpty()) return;
+  QSet<QString> seen;
+  const auto pathKey = [](const QFileInfo &file) {
+    const QString canonical = file.canonicalFilePath();
+    return (canonical.isEmpty() ? file.absoluteFilePath() : canonical).toCaseFolded();
+  };
+  for (int row = 0; row < m_videos->count(); ++row)
+    seen.insert(pathKey(QFileInfo(m_videos->item(row)->data(Qt::UserRole).toString())));
+  int added = 0;
+  int duplicates = 0;
+  int unavailable = 0;
   for (const QString &path : paths) {
-    const QString absolute = QFileInfo(path).absoluteFilePath();
-    if (seen.contains(absolute, Qt::CaseInsensitive)) continue;
-    seen.append(absolute);
-    auto *item = new QListWidgetItem(QFileInfo(absolute).fileName(), m_videos);
+    const QFileInfo file(path);
+    if (path.isEmpty() || !file.isFile() || !file.isReadable() || file.size() <= 0 ||
+        !isVideoFile(file)) {
+      ++unavailable;
+      continue;
+    }
+    const QString key = pathKey(file);
+    if (seen.contains(key)) {
+      ++duplicates;
+      continue;
+    }
+    seen.insert(key);
+    const QString absolute = file.absoluteFilePath();
+    auto *item = new QListWidgetItem(file.fileName() + "\n" +
+                                       QDir::toNativeSeparators(file.absolutePath()), m_videos);
     item->setData(Qt::UserRole, absolute);
     item->setToolTip(QDir::toNativeSeparators(absolute));
+    ++added;
   }
+  QString message = QString("已添加 %1 个视频").arg(added);
+  if (duplicates) message += QString("，%1 个已在列表中").arg(duplicates);
+  if (unavailable)
+    message += QString("，跳过 %1 个不可用文件（非 AVI/MP4、空文件或无法读取）").arg(unavailable);
+  m_inputStatus->setText(message);
+  m_inputStatus->show();
   updateControls();
 }
 
@@ -328,6 +439,12 @@ void AnalysisWidget::updateControls() {
   const bool busy = hasActiveAnalysis();
   const bool ready = m_service->isReady();
   const bool permitted = m_license.value("valid").toBool();
+  m_addVideos->setEnabled(!busy);
+  m_addFolder->setEnabled(!busy);
+  m_chooseLibrary->setEnabled(!busy && !m_captureBusy);
+  m_videos->setEnabled(!busy);
+  m_removeVideos->setEnabled(!busy && !m_videos->selectedItems().isEmpty());
+  m_clearVideos->setEnabled(!busy && m_videos->count() > 0);
   m_start->setEnabled(!busy && !m_captureBusy && m_videos->count() > 0 &&
                       ready && permitted);
   m_cancel->setEnabled(ready && !m_activeJobId.isEmpty() && !m_cancelPending);
@@ -490,11 +607,12 @@ void AnalysisWidget::startAnalysis() {
     m_service->start();
     return;
   }
+  if (!m_license.value("valid").toBool()) return;
   QJsonArray videos;
   for (int row = 0; row < m_videos->count(); ++row) {
     const QString path = m_videos->item(row)->data(Qt::UserRole).toString();
     const QFileInfo file(path);
-    if (!file.isAbsolute() || !file.isFile() || file.size() <= 0) {
+    if (!file.isAbsolute() || !file.isFile() || !file.isReadable() || file.size() <= 0) {
       QMessageBox::warning(this, "无法开始分析", "视频不存在或仍为空文件：\n" + path);
       return;
     }

@@ -1,8 +1,8 @@
 IDI_ICON1 ICON "icons/wormvision.ico"
 
 1 VERSIONINFO
-FILEVERSION 1,1,2,0
-PRODUCTVERSION 1,1,2,0
+FILEVERSION 1,1,3,0
+PRODUCTVERSION 1,1,3,0
 FILEOS 0x40004L
 FILETYPE 0x1L
 BEGIN
@@ -12,11 +12,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "WormLab"
             VALUE "FileDescription", "WormVision"
-            VALUE "FileVersion", "1.1.2"
+            VALUE "FileVersion", "1.1.3"
             VALUE "InternalName", "WormVision"
             VALUE "OriginalFilename", "WormVision.exe"
             VALUE "ProductName", "WormVision"
-            VALUE "ProductVersion", "1.1.2"
+            VALUE "ProductVersion", "1.1.3"
         END
     END
     BLOCK "VarFileInfo"

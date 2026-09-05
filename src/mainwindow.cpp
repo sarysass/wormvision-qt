@@ -70,9 +70,11 @@ void MainWindow::setupConnections() {
   connect(m_analysisAction, &QAction::triggered, this, &MainWindow::showAnalysisView);
   connect(m_libraryWidget, &VideoLibraryWidget::analysisRequested, this,
           [this](const QStringList &paths) {
-            m_analysisWidget->setSelectedVideos(paths);
+            m_analysisWidget->addVideos(paths);
             showAnalysisView();
           });
+  connect(m_analysisWidget, &AnalysisWidget::videoLibraryRequested,
+          this, &MainWindow::showLibraryView);
   connect(m_captureWidget, &CaptureWidget::recordingBusyChanged,
           m_libraryWidget, &VideoLibraryWidget::setCaptureBusy);
   connect(m_captureWidget, &CaptureWidget::recordingBusyChanged,

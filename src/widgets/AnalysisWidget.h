@@ -19,17 +19,18 @@ class QTableWidget;
 class QTabWidget;
 class QTimer;
 
-/** 视频库的本地分析工作台，任务执行交给已有引擎。 */
+/** 本机视频与视频库共用的分析工作台，任务执行交给已有引擎。 */
 class AnalysisWidget : public QWidget {
   Q_OBJECT
 public:
   explicit AnalysisWidget(QWidget *parent = nullptr);
-  void setSelectedVideos(const QStringList &paths);
+  void addVideos(const QStringList &paths);
   void setCaptureBusy(bool busy);
   bool hasActiveAnalysis() const;
 
 signals:
   void busyChanged(bool busy);
+  void videoLibraryRequested();
 
 protected:
   void showEvent(QShowEvent *event) override;
@@ -38,6 +39,8 @@ private:
   void setupUI();
   void updateControls();
   void setBusyState();
+  void chooseVideos();
+  void chooseFolder();
   void configureEngine();
   void activateLicense();
   void refreshLicense();
@@ -57,6 +60,13 @@ private:
   LocalAnalysisService *m_service = nullptr;
   QTimer *m_pollTimer = nullptr;
   QListWidget *m_videos = nullptr;
+  QPushButton *m_addVideos = nullptr;
+  QPushButton *m_addFolder = nullptr;
+  QPushButton *m_chooseLibrary = nullptr;
+  QPushButton *m_removeVideos = nullptr;
+  QPushButton *m_clearVideos = nullptr;
+  QLabel *m_inputStatus = nullptr;
+  QString m_lastInputDirectory;
   QListWidget *m_history = nullptr;
   QComboBox *m_protocol = nullptr;
   QComboBox *m_device = nullptr;

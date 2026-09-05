@@ -3,9 +3,9 @@
 Windows 上的线虫拍摄与本地视频分析软件，使用 Qt Widgets 和海康机器人 MVS SDK。
 
 - 采集相机画面、录像、抓拍和管理本地视频库。
-- 完成录像后勾选视频，调用本机 MicroHunter 发行引擎分析，不上传视频。
+- 从本机选择单个或多个视频、整个文件夹（含子目录），或从视频库选择录像，调用本机 MicroHunter 发行引擎分析，不上传视频。
 - 固定使用 `yolo-sam2-optimized-core`，显示进度、历史任务、汇总和逐虫指标，并打开轨迹图、标注视频及报告。
-- 保留原有深浅主题，版本 1.1.2 使用仓库中的 WormStudio 图标。
+- 保留原有深浅主题，版本 1.1.3 使用仓库中的 WormStudio 图标。
 
 ## 构建前准备
 
@@ -96,10 +96,10 @@ build/engine/microhunter/
 先完成构建与部署，再执行：
 
 ```powershell
-.\scripts\package.ps1 -Version 1.1.2 -SkipBuild
+.\scripts\package.ps1 -Version 1.1.3 -SkipBuild
 ```
 
-产物为 `installer/Output/WormVision-Setup-1.1.2.exe`，默认还会复制到桌面。可使用 `-NoDesktopCopy` 禁止桌面副本；自定义构建目录时同时传入 `-BuildDir`。省略 `-SkipBuild` 时会先构建，支持 `-VcpkgRoot` 和 `-UseInstalledDependencies`。
+产物为 `installer/Output/WormVision-Setup-1.1.3.exe`，默认还会复制到桌面。可使用 `-NoDesktopCopy` 禁止桌面副本；自定义构建目录时同时传入 `-BuildDir`。省略 `-SkipBuild` 时会先构建，支持 `-VcpkgRoot` 和 `-UseInstalledDependencies`。1.1.3 继续使用 `build-inputs-1.1.2` 的原始依赖包。
 
 若要分发包含本地分析能力的完整安装包，先把维护者提供的完整 MicroHunter 引擎复制到 `<BuildDir>/engine/`，保留其依赖和权重。支持 `engine/microhunter.exe` 或 `engine/microhunter/microhunter.exe` 两种目录布局。未放入引擎时，安装包只携带 Qt 应用，使用者需单独配置引擎。
 

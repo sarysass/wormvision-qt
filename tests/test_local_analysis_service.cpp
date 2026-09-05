@@ -4,8 +4,10 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
+#include <QFileDialog>
 #include <QJsonArray>
 #include <QLabel>
+#include <QListWidget>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
@@ -14,11 +16,28 @@
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QTimer>
 #include <QtTest>
 
 #include <cstdio>
 
 namespace {
+
+// 通过真实文件对话框选择临时文件，模型执行仍由已有测试引擎隔离。
+void chooseInputPath(QPushButton *button, const QString &path) {
+  QTimer::singleShot(0, button, [path]() {
+    auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+    QVERIFY(dialog);
+    dialog->selectFile(path);
+    QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
+  });
+  button->click();
+}
+
+bool writeInputFixture(const QString &path, const QByteArray &content = "video fixture") {
+  QFile file(path);
+  return file.open(QIODevice::WriteOnly) && file.write(content) == content.size();
+}
 
 // 测试程序自身作为独立引擎子进程，覆盖真实的进程与 HTTP 边界。
 int runTestEngine(QCoreApplication &app) {
@@ -166,7 +185,7 @@ private slots:
     service->setEngine(QCoreApplication::applicationFilePath());
     auto *start = widget.findChild<QPushButton *>("primaryButton");
     QVERIFY(start);
-    widget.setSelectedVideos({video.fileName()});
+    widget.addVideos({video.fileName()});
     widget.show();
     const auto licenseLoaded = [&]() {
       for (auto *label : widget.findChildren<QLabel *>()) {
@@ -217,7 +236,7 @@ private slots:
     devices->setCurrentIndex(devices->findData(deviceChoice));
     auto *start = widget.findChild<QPushButton *>("primaryButton");
     QVERIFY(start);
-    widget.setSelectedVideos({video.fileName()});
+    widget.addVideos({video.fileName()});
     widget.show();
     QTRY_VERIFY_WITH_TIMEOUT(start->isEnabled(), 5000);
     start->click();
@@ -242,6 +261,125 @@ private slots:
     } else {
       QCOMPARE(submitted.value("device").toString(), deviceChoice);
     }
+  }
+
+  void localFileSelectionAppendsAndSubmitsOriginalPaths() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString libraryVideo = directory.filePath("library.avi");
+    const QString localVideo = directory.filePath(QStringLiteral("本机 视频.MP4"));
+    QVERIFY(writeInputFixture(libraryVideo));
+    QVERIFY(writeInputFixture(localVideo));
+
+    AnalysisWidget widget;
+    widget.setAttribute(Qt::WA_DontShowOnScreen);
+    widget.addVideos({libraryVideo});
+    auto *addFiles = widget.findChild<QPushButton *>("addAnalysisVideos");
+    QVERIFY2(addFiles, "Analysis must accept local files without importing the video library");
+    auto *service = widget.findChild<LocalAnalysisService *>();
+    service->setEngine(QCoreApplication::applicationFilePath());
+    widget.show();
+    chooseInputPath(addFiles, localVideo);
+    chooseInputPath(addFiles, localVideo);
+    auto *videos = widget.findChild<QListWidget *>("analysisInputVideos");
+    QVERIFY(videos);
+    QCOMPARE(videos->count(), 2);
+
+    auto *start = widget.findChild<QPushButton *>("primaryButton");
+    QTRY_VERIFY_WITH_TIMEOUT(start->isEnabled(), 5000);
+    widget.setCaptureBusy(true);
+    QVERIFY(!start->isEnabled());
+    widget.setCaptureBusy(false);
+    start->click();
+    QVERIFY(widget.hasActiveAnalysis());
+    QVERIFY(!addFiles->isEnabled());
+    QVERIFY(!widget.findChild<QPushButton *>("addAnalysisFolder")->isEnabled());
+    QVERIFY(!widget.findChild<QPushButton *>("clearAnalysisVideos")->isEnabled());
+    QTRY_VERIFY_WITH_TIMEOUT(!widget.hasActiveAnalysis(), 5000);
+
+    bool checked = false;
+    service->get("/api/last-run-request", [&](const QJsonDocument &doc, const QString &error) {
+      QVERIFY2(error.isEmpty(), qPrintable(error));
+      QCOMPARE(doc.object().value("videos").toArray(), QJsonArray({libraryVideo, localVideo}));
+      checked = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(checked, 5000);
+  }
+
+  void folderSelectionIncludesSubfoldersAndSkipsInvalidFiles() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QVERIFY(QDir(directory.path()).mkpath(QStringLiteral("子文件夹")));
+    QVERIFY(QDir(directory.path()).mkdir("empty"));
+    const QString first = directory.filePath("sample.avi");
+    const QString nested = directory.filePath(QStringLiteral("子文件夹/sample.MP4"));
+    QVERIFY(writeInputFixture(first));
+    QVERIFY(writeInputFixture(nested));
+    QVERIFY(writeInputFixture(directory.filePath("notes.txt")));
+    QVERIFY(writeInputFixture(directory.filePath("empty.avi"), {}));
+
+    AnalysisWidget widget;
+    widget.setAttribute(Qt::WA_DontShowOnScreen);
+    widget.addVideos({first});
+    auto *folder = widget.findChild<QPushButton *>("addAnalysisFolder");
+    QVERIFY2(folder, "Analysis must accept a local folder");
+    chooseInputPath(folder, directory.path());
+    auto *videos = widget.findChild<QListWidget *>("analysisInputVideos");
+    QVERIFY(videos);
+    QCOMPARE(videos->count(), 2);
+    QCOMPARE(videos->item(0)->data(Qt::UserRole).toString(), first);
+    QCOMPARE(videos->item(1)->data(Qt::UserRole).toString(), nested);
+    QVERIFY(videos->item(1)->text().contains(QStringLiteral("子文件夹")));
+    chooseInputPath(folder, directory.filePath("empty"));
+    QCOMPARE(videos->count(), 2);
+
+    auto *service = widget.findChild<LocalAnalysisService *>();
+    service->setEngine(QCoreApplication::applicationFilePath());
+    widget.show();
+    auto *start = widget.findChild<QPushButton *>("primaryButton");
+    QTRY_VERIFY_WITH_TIMEOUT(start->isEnabled(), 5000);
+    start->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!widget.hasActiveAnalysis(), 5000);
+    bool checked = false;
+    service->get("/api/last-run-request", [&](const QJsonDocument &doc, const QString &error) {
+      QVERIFY2(error.isEmpty(), qPrintable(error));
+      QCOMPARE(doc.object().value("videos").toArray(), QJsonArray({first, nested}));
+      checked = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(checked, 5000);
+
+    auto *remove = widget.findChild<QPushButton *>("removeAnalysisVideos");
+    auto *clear = widget.findChild<QPushButton *>("clearAnalysisVideos");
+    QVERIFY(remove);
+    QVERIFY(clear);
+    videos->item(1)->setSelected(true);
+    remove->click();
+    QCOMPARE(videos->count(), 1);
+    QCOMPARE(videos->item(0)->data(Qt::UserRole).toString(), first);
+    clear->click();
+    QCOMPARE(videos->count(), 0);
+    QVERIFY(QFileInfo(first).isFile());
+    QVERIFY(QFileInfo(nested).isFile());
+  }
+
+  void cancellingFileSelectionKeepsPendingVideos() {
+    QTemporaryDir directory;
+    const QString path = directory.filePath("keep.avi");
+    QVERIFY(writeInputFixture(path));
+    AnalysisWidget widget;
+    widget.addVideos({path});
+    auto *addFiles = widget.findChild<QPushButton *>("addAnalysisVideos");
+    QVERIFY(addFiles);
+    QTimer::singleShot(0, addFiles, []() {
+      auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+      QVERIFY(dialog);
+      dialog->reject();
+    });
+    addFiles->click();
+    auto *videos = widget.findChild<QListWidget *>("analysisInputVideos");
+    QVERIFY(videos);
+    QCOMPARE(videos->count(), 1);
+    QCOMPARE(videos->item(0)->data(Qt::UserRole).toString(), path);
   }
 
   void failedStartCanRecoverAndHandshake() {
@@ -338,6 +476,7 @@ private slots:
 };
 
 int main(int argc, char **argv) {
+  QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
   QApplication app(argc, argv);
   if (app.arguments().value(1) == "serve") {
     return runTestEngine(app);

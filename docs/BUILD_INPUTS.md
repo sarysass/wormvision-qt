@@ -1,4 +1,4 @@
-# 构建依赖交付（Windows x64，1.1.2）
+# 构建依赖交付（Windows x64，1.1.2 / 1.1.3）
 
 源码位于 `codex/local-analysis-integration` 分支。二进制依赖位于 [build-inputs-1.1.2 Release](https://github.com/sarysass/wormvision-qt/releases/tag/build-inputs-1.1.2)，与 Git 分开下载。机器可读清单见 [build-inputs.json](../third_party/build-inputs.json)，校验值另见 [SHA256SUMS.txt](../third_party/SHA256SUMS.txt)。
 
@@ -54,10 +54,10 @@ Expand-Archive -LiteralPath third_party/downloads/wormvision-mvs-4.7.0.3-win64.z
 & 'C:\Program Files\7-Zip\7z.exe' x third_party/downloads/microhunter.7z -obuild/engine
 if ($LASTEXITCODE -ne 0) { throw '分析引擎解压失败' }
 Copy-Item -LiteralPath third_party/downloads/vc_redist.x64.exe -Destination build/
-.\scripts\package.ps1 -Version 1.1.2 -SkipBuild -NoDesktopCopy
+.\scripts\package.ps1 -Version 1.1.3 -SkipBuild -NoDesktopCopy
 ```
 
-输出为 `installer/Output/WormVision-Setup-1.1.2.exe`。引擎目录必须保留 `build/engine/microhunter/microhunter.exe`、`_internal/` 和 `weights/`。如果使用自定义 `-BuildDir`，解压、复制运行时及打包步骤也使用相同目录。
+输出为 `installer/Output/WormVision-Setup-1.1.3.exe`。1.1.3 的输入功能改进沿用同一组发行依赖。引擎目录必须保留 `build/engine/microhunter/microhunter.exe`、`_internal/` 和 `weights/`。如果使用自定义 `-BuildDir`，解压、复制运行时及打包步骤也使用相同目录。
 
 已有完整 MVS 安装环境时，可以直接使用 README 中的默认构建命令。使用依赖 ZIP 时，每次运行 `build.ps1` 或 `configure.ps1` 都传入上述两个 MVS 目录参数；打包使用 `-SkipBuild`，复用刚构建好的目录。
 
